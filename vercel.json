@@ -1,0 +1,8 @@
+{
+  "headers": [
+    {
+      "source": "/api/payment/webhook",
+      "headers": [{ "key": "x-vercel-skip-body-parsing", "value": "true" }]
+    }
+  ]
+}
