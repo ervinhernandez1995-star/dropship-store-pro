@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { useSearchParams } from 'next/navigation'
-
+export const dynamic = "force-dynamic"
 export default function CheckoutPage() {
   const searchParams = useSearchParams()
   const cancelled = searchParams.get('cancelled')

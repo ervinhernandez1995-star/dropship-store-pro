@@ -1,6 +1,7 @@
 'use client'
 import { useSearchParams } from 'next/navigation'
 export default function GraciasPage() {
+  export const dynamic = "force-dynamic"
   const params = useSearchParams()
   const order = params.get('order')
   return (
