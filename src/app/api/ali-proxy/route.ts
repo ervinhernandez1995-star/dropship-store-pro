@@ -12,16 +12,9 @@ function extractAliId(url: string): string | null {
   return null
 }
 
-function parsePrice(val: any): number {
-  if (!val) return 0
-  const n = parseFloat(String(val).replace(/[^0-9.]/g, ''))
-  return isNaN(n) ? 0 : n
-}
-
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const url = searchParams.get('url') || ''
-  const debug = searchParams.get('debug') === '1'
   const productId = extractAliId(url)
 
   if (!productId) {
@@ -31,17 +24,14 @@ export async function GET(req: NextRequest) {
   const apiKey = process.env.RAPIDAPI_KEY
   if (!apiKey) return NextResponse.json({ error: 'RAPIDAPI_KEY no configurada' }, { status: 500 })
 
-  // Try endpoints — request USD so we can convert reliably, or MXN if available
+  // item_detail_2 and item_detail_6 both work — try in order
   const endpoints = [
-    `https://aliexpress-datahub.p.rapidapi.com/item_detail_3?itemId=${productId}&currency=MXN&locale=es_MX`,
     `https://aliexpress-datahub.p.rapidapi.com/item_detail_2?itemId=${productId}&currency=MXN&locale=es_MX`,
-    `https://aliexpress-datahub.p.rapidapi.com/item_detail?itemId=${productId}&currency=USD&locale=es_MX`,
+    `https://aliexpress-datahub.p.rapidapi.com/item_detail_6?itemId=${productId}&currency=MXN&locale=es_MX`,
   ]
 
   let lastError = ''
-  for (let i = 0; i < endpoints.length; i++) {
-    const endpoint = endpoints[i]
-    const isUSD = endpoint.includes('currency=USD')
+  for (const endpoint of endpoints) {
     try {
       const res = await fetch(endpoint, {
         headers: {
@@ -52,69 +42,58 @@ export async function GET(req: NextRequest) {
       })
 
       if (!res.ok) { lastError = `${res.status}`; continue }
+
       const data = await res.json()
-      if (debug) return NextResponse.json(data)
+      const item = data?.result?.item
+      if (!item) { lastError = 'no item'; continue }
 
-      const result = data?.result || data
-      const item = result?.item || result?.data || result
-
-      const title = item?.title || item?.subject || item?.ae_item_base_info_dto?.subject || ''
+      const title = item.title || ''
       if (!title) { lastError = 'no title'; continue }
 
-      // ── Price extraction ──
-      // item_detail_3 / item_detail_2 structure:
-      // item.sku.def.prices.salePrice.formattedPrice = "MX$677.17"
-      // item.sku.def.prices.salePrice.minPrice (number, in requested currency)
+      // ── Price: use minimum promotionPrice from sku.base, else minimum price ──
+      // sku.base has one entry per variant (color/ship-from combo)
+      // promotionPrice = discounted price (what customer sees)
+      // price = original price before discount
+      const skuBase: any[] = item?.sku?.base || []
       let price = 0
 
-      const skuPrices = item?.sku?.def?.prices
-      if (skuPrices) {
-        // Try salePrice first, then originalPrice
-        const salePriceFormatted = skuPrices?.salePrice?.formattedPrice || skuPrices?.minActivityAmount?.formattedPrice || ''
-        const salePriceNum = skuPrices?.salePrice?.minPrice || skuPrices?.salePrice?.minAmount?.value || 0
-        
-        if (salePriceFormatted) {
-          price = parsePrice(salePriceFormatted)
-        } else if (salePriceNum) {
-          price = parseFloat(salePriceNum)
+      if (skuBase.length > 0) {
+        // Collect all valid promotion prices (skip nulls)
+        const promoprices = skuBase
+          .map((s: any) => s.promotionPrice)
+          .filter((p: any) => p != null && p > 0)
+          .map((p: any) => parseFloat(p))
+
+        // Collect all regular prices
+        const regularPrices = skuBase
+          .map((s: any) => s.price)
+          .filter((p: any) => p != null && p > 0)
+          .map((p: any) => parseFloat(p))
+
+        // Use lowest promo price if available, else lowest regular price
+        if (promoprices.length > 0) {
+          price = Math.min(...promoprices)
+        } else if (regularPrices.length > 0) {
+          price = Math.min(...regularPrices)
         }
       }
 
-      // Fallback paths
-      if (!price) price = parsePrice(item?.sale_price || item?.sku?.def?.price || item?.ae_item_base_info_dto?.sale_price || 0)
-      
-      // If USD, convert to MXN (approximate)
-      if (!price && isUSD) {
-        const usdPrice = parsePrice(item?.sku?.def?.prices?.salePrice?.minPrice || item?.sale_price || 0)
-        if (usdPrice > 0) price = Math.round(usdPrice * 17.5)
+      // Fallback to sku.def price range (take the min)
+      if (!price && item?.sku?.def?.price) {
+        const defPrice = String(item.sku.def.price)
+        const parts = defPrice.split('-').map((s: string) => parseFloat(s.trim())).filter((n: number) => !isNaN(n))
+        if (parts.length > 0) price = Math.min(...parts)
       }
 
       // ── Images ──
-      const images: string[] = []
-      const imgList = item?.image?.img_path_list
-        || item?.imagePathList
-        || item?.ae_multimedia_info_dto?.image_urls
-        || item?.images || []
-
-      if (Array.isArray(imgList)) {
-        imgList.slice(0, 6).forEach((img: string) => {
-          if (!img) return
-          const u = img.startsWith('//') ? 'https:' + img : img.replace('http://', 'https://')
-          images.push(u)
-        })
-      }
-      if (images.length === 0) {
-        const main = item?.image?.img_path || item?.mainImage || ''
-        if (main) images.push(main.startsWith('//') ? 'https:' + main : main)
-      }
-
-      // ── Description ──
-      const description = item?.description || item?.detail || ''
+      const images: string[] = (item.images || []).slice(0, 6).map((img: string) =>
+        img.startsWith('//') ? 'https:' + img : img.replace('http://', 'https://')
+      )
 
       return NextResponse.json({
         success: true,
         productId,
-        raw: { title, price, currency: isUSD ? 'USD_converted' : 'MXN', images, description }
+        raw: { title, price: Math.round(price * 100) / 100, currency: 'MXN', images }
       })
 
     } catch (e: any) { lastError = e.message }
