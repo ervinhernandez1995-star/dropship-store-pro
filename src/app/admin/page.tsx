@@ -135,31 +135,128 @@ function AdminDashboard({ products, orders, totalRevenue, totalCommission }: any
 function AdminImporter({ onRefresh, onGoProducts }: { onRefresh: () => void; onGoProducts: () => void }) {
   const [url, setUrl] = useState('')
   const [loading, setLoading] = useState(false)
+  const [loadingMsg, setLoadingMsg] = useState('')
   const [result, setResult] = useState<any>(null)
   const [error, setError] = useState('')
   const [history, setHistory] = useState<any[]>([])
+
+  // Extract ML item ID from URL
+  const extractMLId = (u: string): string | null => {
+    const pageMatch = u.match(/\/p\/(MLM\d+)/i)
+    if (pageMatch) return pageMatch[1]
+    const allMatches = [...u.matchAll(/MLM-?(\d+)/gi)]
+    if (allMatches.length > 0) {
+      const best = allMatches.sort((a, b) => b[1].length - a[1].length)[0]
+      return `MLM${best[1]}`
+    }
+    return null
+  }
 
   const importProduct = async () => {
     if (!url.trim()) return
     setLoading(true)
     setError('')
     setResult(null)
+
+    const isMercadoLibre = url.includes('mercadolibre')
+    const isAliExpress = url.includes('aliexpress')
+
+    if (!isMercadoLibre && !isAliExpress) {
+      setError('Pega una URL de MercadoLibre o AliExpress')
+      setLoading(false)
+      return
+    }
+
     try {
+      let productData: any = null
+
+      if (isMercadoLibre) {
+        // STEP 1: Fetch from ML API directly in the browser (bypasses Vercel IP block)
+        setLoadingMsg('📡 Obteniendo datos de MercadoLibre...')
+        const itemId = extractMLId(url)
+        if (!itemId) {
+          setError('No se encontró el ID del producto en la URL. Asegúrate de que tenga "MLM" + números.')
+          setLoading(false)
+          return
+        }
+
+        // If it's a page ID (/p/MLM...), get the actual item
+        let realItemId = itemId
+        if (url.includes('/p/MLM')) {
+          try {
+            const pageRes = await fetch(`https://api.mercadolibre.com/products/${itemId}/items?limit=1`)
+            if (pageRes.ok) {
+              const pageData = await pageRes.json()
+              if (pageData.results?.[0]?.id) realItemId = pageData.results[0].id
+            }
+          } catch { /* use itemId directly */ }
+        }
+
+        const mlRes = await fetch(`https://api.mercadolibre.com/items/${realItemId}`)
+        if (!mlRes.ok) throw new Error(`No se pudo obtener el producto (${mlRes.status}). Verifica la URL.`)
+        const d = await mlRes.json()
+
+        const images = (d.pictures || []).slice(0, 6)
+          .map((p: any) => (p.url || p.secure_url || '').replace('http://', 'https://').replace(/-I\.jpg$/, '-O.jpg'))
+          .filter(Boolean)
+        if (images.length === 0 && d.thumbnail) images.push(d.thumbnail.replace('http://', 'https://').replace(/-I\.jpg$/, '-O.jpg'))
+
+        const attrs = (d.attributes || []).slice(0, 8)
+          .map((a: any) => `${a.name}: ${a.value_name}`)
+          .filter((a: string) => !a.includes('null') && !a.includes('undefined'))
+          .join(', ')
+
+        productData = {
+          title: d.title,
+          price: d.price,
+          stock: d.available_quantity || 10,
+          images,
+          attrs,
+          source_url: url,
+          source_name: 'MercadoLibre',
+          category_id: d.category_id || '',
+        }
+      } else {
+        // AliExpress: extract from URL (no API available)
+        setLoadingMsg('📦 Procesando URL de AliExpress...')
+        const decoded = decodeURIComponent(url)
+        const path = decoded.split('/').find((s: string) => s.length > 10 && !s.includes('.') && isNaN(Number(s))) || ''
+        productData = {
+          title: path.replace(/-/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()).slice(0, 80) || 'Producto AliExpress',
+          price: 299,
+          stock: 50,
+          images: [],
+          attrs: '',
+          source_url: url,
+          source_name: 'AliExpress',
+          category_id: '',
+        }
+      }
+
+      if (!productData.price || productData.price <= 0) {
+        setError('No se pudo obtener el precio del producto.')
+        setLoading(false)
+        return
+      }
+
+      // STEP 2: Send extracted data to server to save + generate AI description
+      setLoadingMsg('🤖 Generando descripción con IA...')
       const res = await fetch('/api/import', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: url.trim() }),
+        body: JSON.stringify({ productData }),
       })
       const data = await res.json()
-      if (data.error) { setError(data.error); setLoading(false); return }
+      if (data.error) { setError(data.error); setLoading(false); setLoadingMsg(''); return }
       setResult(data)
       setHistory(h => [data, ...h.slice(0, 4)])
       setUrl('')
       onRefresh()
     } catch (e: any) {
-      setError('Error de conexión. Verifica tu internet.')
+      setError(e.message || 'Error de conexión. Verifica tu internet.')
     }
     setLoading(false)
+    setLoadingMsg('')
   }
 
   return (
@@ -214,7 +311,7 @@ function AdminImporter({ onRefresh, onGoProducts }: { onRefresh: () => void; onG
         <div className="card" style={{ textAlign: 'center', padding: '40px' }}>
           <div style={{ fontSize: 48, marginBottom: 16 }}>🤖</div>
           <div style={{ fontFamily: 'Syne, sans-serif', fontSize: 18, fontWeight: 700, marginBottom: 8 }}>Importando producto...</div>
-          <div style={{ color: 'var(--text2)', fontSize: 14 }}>Obteniendo datos de MercadoLibre y generando descripción con IA</div>
+          <div style={{ color: 'var(--accent)', fontSize: 14 }}>{loadingMsg || 'Conectando...'}</div>
         </div>
       )}
 
@@ -594,28 +691,88 @@ function AdminBulkImporter({ onRefresh, onGoProducts }: { onRefresh: () => void;
     { label: 'Cocina y hogar ML', url: 'https://listado.mercadolibre.com.mx/cocina' },
   ]
 
+  const extractKeywords = (u: string): string => {
+    const qMatch = u.match(/[?&]q=([^&]+)/)
+    if (qMatch) return decodeURIComponent(qMatch[1].replace(/\+/g, ' '))
+    const listadoMatch = u.match(/listado\.mercadolibre\.com\.mx\/([^?#_]+)/)
+    if (listadoMatch) return listadoMatch[1].replace(/-/g, ' ').trim()
+    const wwwMatch = u.match(/mercadolibre\.com\.mx\/([^?#/]+)/)
+    if (wwwMatch && !wwwMatch[1].startsWith('MLM')) return wwwMatch[1].replace(/-/g, ' ').trim()
+    return ''
+  }
+
   const run = async () => {
     if (!url.trim()) return
     setLoading(true)
     setError('')
     setResult(null)
-    setProgress('Conectando con la tienda...')
-    await new Promise(r => setTimeout(r, 800))
-    setProgress(`Extrayendo hasta ${limit} productos...`)
+
+    const isMercadoLibre = url.includes('mercadolibre')
+    const isAmazon = url.includes('amazon')
+    const isAliExpress = url.includes('aliexpress')
+
     try {
+      let rawProducts: any[] = []
+      let sourceName = 'MercadoLibre'
+      let searchQuery = ''
+
+      if (isMercadoLibre) {
+        searchQuery = extractKeywords(url)
+        if (!searchQuery || searchQuery.length < 3) {
+          setError('No se pudo extraer la búsqueda. Usa: https://listado.mercadolibre.com.mx/bocinas-bluetooth')
+          setLoading(false); return
+        }
+        setProgress(`🔍 Buscando "${searchQuery}" en MercadoLibre...`)
+        // Fetch directly from browser — bypasses Vercel IP block!
+        const mlRes = await fetch(
+          `https://api.mercadolibre.com/sites/MLM/search?q=${encodeURIComponent(searchQuery)}&limit=${Math.min(limit, 48)}&condition=new`
+        )
+        if (!mlRes.ok) throw new Error(`Error ${mlRes.status} al consultar MercadoLibre`)
+        const mlData = await mlRes.json()
+        rawProducts = mlData.results || []
+        sourceName = 'MercadoLibre'
+      } else if (isAmazon) {
+        const kMatch = url.match(/[?&]k=([^&]+)/)
+        searchQuery = kMatch ? decodeURIComponent(kMatch[1].replace(/\+/g, ' ')) : 'productos electronicos'
+        setProgress(`🔍 Buscando "${searchQuery}" en MercadoLibre...`)
+        const mlRes = await fetch(`https://api.mercadolibre.com/sites/MLM/search?q=${encodeURIComponent(searchQuery)}&limit=${Math.min(limit, 48)}`)
+        if (!mlRes.ok) throw new Error(`Error ${mlRes.status} al consultar MercadoLibre`)
+        const mlData = await mlRes.json()
+        rawProducts = mlData.results || []
+        sourceName = 'Amazon'
+      } else if (isAliExpress) {
+        const decoded = decodeURIComponent(url)
+        const path = decoded.split('/').find((s: string) => s.length > 15 && s.includes('-')) || ''
+        searchQuery = path.replace(/-/g, ' ').slice(0, 60) || 'productos'
+        setProgress(`🔍 Buscando "${searchQuery}"...`)
+        const mlRes = await fetch(`https://api.mercadolibre.com/sites/MLM/search?q=${encodeURIComponent(searchQuery)}&limit=${Math.min(limit, 48)}`)
+        if (!mlRes.ok) throw new Error(`Error ${mlRes.status} al consultar MercadoLibre`)
+        const mlData = await mlRes.json()
+        rawProducts = mlData.results || []
+        sourceName = 'AliExpress'
+      } else {
+        setError('URL no reconocida.'); setLoading(false); return
+      }
+
+      if (rawProducts.length === 0) {
+        setError(`No se encontraron productos para "${searchQuery}".`)
+        setLoading(false); return
+      }
+
+      setProgress(`✅ ${rawProducts.length} productos encontrados. Guardando en tu tienda...`)
+
+      // Send to server just to save + generate descriptions
       const res = await fetch('/api/import-bulk', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: url.trim(), limit, margin }),
+        body: JSON.stringify({ products: rawProducts, margin, sourceName, searchQuery }),
       })
       const data = await res.json()
       if (data.error) { setError(data.error); setLoading(false); setProgress(''); return }
-      setProgress('Guardando en tu tienda...')
-      await new Promise(r => setTimeout(r, 400))
       setResult(data)
       onRefresh()
     } catch (e: any) {
-      setError('Error de conexión')
+      setError(e.message || 'Error de conexión')
     }
     setLoading(false)
     setProgress('')
