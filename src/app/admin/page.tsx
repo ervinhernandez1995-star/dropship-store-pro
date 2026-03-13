@@ -220,19 +220,43 @@ function AdminImporter({ onRefresh, onGoProducts }: { onRefresh: () => void; onG
           category_id: d.category_id || '',
         }
       } else {
-        // AliExpress: extract from URL (no API available)
-        setLoadingMsg('📦 Procesando URL de AliExpress...')
-        const decoded = decodeURIComponent(url)
-        const path = decoded.split('/').find((s: string) => s.length > 10 && !s.includes('.') && isNaN(Number(s))) || ''
-        productData = {
-          title: path.replace(/-/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()).slice(0, 80) || 'Producto AliExpress',
-          price: 299,
-          stock: 50,
-          images: [],
-          attrs: '',
-          source_url: url,
-          source_name: 'AliExpress',
-          category_id: '',
+        // AliExpress: fetch real data via our server proxy
+        setLoadingMsg('📦 Obteniendo datos de AliExpress...')
+        const aliRes = await fetch(`/api/ali-proxy?url=${encodeURIComponent(url.trim())}`)
+        const aliData = await aliRes.json()
+        
+        if (aliData.error && !aliData.raw?.title) {
+          // Fallback: extract basic info from URL
+          const decoded = decodeURIComponent(url)
+          const path = decoded.split('/').find((s: string) => s.length > 10 && !s.includes('.') && isNaN(Number(s))) || ''
+          const titleFromUrl = path.replace(/-/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()).slice(0, 80)
+          productData = {
+            title: titleFromUrl || 'Producto AliExpress',
+            price: 299,
+            stock: 50,
+            images: [],
+            attrs: '',
+            source_url: url,
+            source_name: 'AliExpress',
+            category_id: '',
+          }
+        } else {
+          const raw = aliData.raw || {}
+          // Fix image URLs
+          const images = (raw.images || []).slice(0, 5).map((img: string) => {
+            const u = img.startsWith('//') ? 'https:' + img : img
+            return u.replace('http://', 'https://')
+          })
+          productData = {
+            title: raw.title || 'Producto AliExpress',
+            price: raw.price && raw.price > 0 ? raw.price : 299,
+            stock: 50,
+            images,
+            attrs: '',
+            source_url: url,
+            source_name: 'AliExpress',
+            category_id: '',
+          }
         }
       }
 
@@ -305,7 +329,17 @@ function AdminImporter({ onRefresh, onGoProducts }: { onRefresh: () => void; onG
       {/* ERROR */}
       {error && (
         <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 10, padding: '14px 18px', marginBottom: 20, color: 'var(--red)', fontSize: 14 }}>
-          ⚠️ {error}
+          {error === 'AUTH_NEEDED' ? (
+            <div>
+              <div style={{ fontWeight: 700, marginBottom: 10 }}>🔐 Necesitas autorizar la app con MercadoLibre</div>
+              <div style={{ fontSize: 13, marginBottom: 14, color: 'var(--text2)' }}>Haz clic en el botón para conectar tu cuenta de MercadoLibre (solo se hace una vez)</div>
+              <a href="/api/ml-auth" style={{ background: '#0ea5e9', color: '#fff', padding: '10px 20px', borderRadius: 8, textDecoration: 'none', fontWeight: 700, fontSize: 14 }}>
+                🔗 Conectar con MercadoLibre
+              </a>
+            </div>
+          ) : (
+            <>⚠️ {error}</>
+          )}
         </div>
       )}
 
@@ -729,7 +763,13 @@ function AdminBulkImporter({ onRefresh, onGoProducts }: { onRefresh: () => void;
         // Fetch directly from browser — bypasses Vercel IP block!
         const q = encodeURIComponent('/sites/MLM/search?q=' + encodeURIComponent(searchQuery) + '&limit=' + Math.min(limit, 48) + '&condition=new')
         const mlRes = await fetch(`/api/ml-proxy?path=${q}`)
-        if (!mlRes.ok) throw new Error(`Error ${mlRes.status} al consultar MercadoLibre`)
+        if (!mlRes.ok) {
+          const errData = await mlRes.json().catch(() => ({}))
+          if (mlRes.status === 403 || mlRes.status === 401) {
+            throw new Error('AUTH_NEEDED')
+          }
+          throw new Error(`Error ${mlRes.status} al consultar MercadoLibre`)
+        }
         const mlData = await mlRes.json()
         rawProducts = mlData.results || []
         sourceName = 'MercadoLibre'
