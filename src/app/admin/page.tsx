@@ -144,7 +144,10 @@ function AdminImporter({ onRefresh, onGoProducts }: { onRefresh: () => void; onG
   const extractMLId = (u: string): string | null => {
     const pageMatch = u.match(/\/p\/(MLM\d+)/i)
     if (pageMatch) return pageMatch[1]
-    const allMatches = [...u.matchAll(/MLM-?(\d+)/gi)]
+    const re = /MLM-?(\d+)/gi
+    const allMatches: RegExpExecArray[] = []
+    let m: RegExpExecArray | null
+    while ((m = re.exec(u)) !== null) allMatches.push(m)
     if (allMatches.length > 0) {
       const best = allMatches.sort((a, b) => b[1].length - a[1].length)[0]
       return `MLM${best[1]}`
