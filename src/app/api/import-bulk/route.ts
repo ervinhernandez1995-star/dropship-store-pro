@@ -17,43 +17,48 @@ function detectCategory(catId: string): string {
   return Object.entries(map).find(([k]) => catId.startsWith(k))?.[1] || 'General'
 }
 
-// Extract search keywords from any ML URL
 function extractKeywords(url: string): string {
-  // ?q= param
   const qMatch = url.match(/[?&]q=([^&]+)/)
   if (qMatch) return decodeURIComponent(qMatch[1].replace(/\+/g, ' '))
-
-  // listado.mercadolibre.com.mx/KEYWORDS
   const listadoMatch = url.match(/listado\.mercadolibre\.com\.mx\/([^?#_]+)/)
   if (listadoMatch) return listadoMatch[1].replace(/-/g, ' ').trim()
-
-  // www.mercadolibre.com.mx/KEYWORDS
   const wwwMatch = url.match(/mercadolibre\.com\.mx\/([^?#/]+)/)
   if (wwwMatch && !wwwMatch[1].startsWith('MLM')) return wwwMatch[1].replace(/-/g, ' ').trim()
-
   return ''
 }
 
-async function mlSearch(query: string, limit: number) {
-  const encodedQuery = encodeURIComponent(query)
-  // Use the public ML search API with proper headers
+// Get ML access token using Client Credentials
+async function getMLToken(): Promise<string> {
+  const res = await fetch('https://api.mercadolibre.com/oauth/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Accept': 'application/json' },
+    body: new URLSearchParams({
+      grant_type: 'client_credentials',
+      client_id: process.env.ML_CLIENT_ID!,
+      client_secret: process.env.ML_CLIENT_SECRET!,
+    }),
+    cache: 'no-store',
+  })
+  if (!res.ok) {
+    const err = await res.text()
+    throw new Error(`ML Auth error ${res.status}: ${err.slice(0, 200)}`)
+  }
+  const data = await res.json()
+  return data.access_token
+}
+
+async function mlSearch(query: string, limit: number, token: string) {
   const res = await fetch(
-    `https://api.mercadolibre.com/sites/MLM/search?q=${encodedQuery}&limit=${limit}&condition=new`,
+    `https://api.mercadolibre.com/sites/MLM/search?q=${encodeURIComponent(query)}&limit=${limit}&condition=new`,
     {
-      headers: {
-        'Accept': 'application/json',
-        'User-Agent': 'TodoClickMX/1.0',
-      },
-      // Use Next.js cache: no-store to avoid caching issues
+      headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' },
       cache: 'no-store',
     }
   )
-  
   if (!res.ok) {
-    const errText = await res.text().catch(() => '')
-    throw new Error(`MercadoLibre API error ${res.status}: ${errText.slice(0, 200)}`)
+    const err = await res.text()
+    throw new Error(`ML Search error ${res.status}: ${err.slice(0, 200)}`)
   }
-  
   return res.json()
 }
 
@@ -70,29 +75,23 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'URL no reconocida. Usa MercadoLibre, Amazon o AliExpress.' }, { status: 400 })
     }
 
-    // Detect single product URL
     if (isMercadoLibre && (url.includes('/p/MLM') || url.includes('polycard_client') || url.includes('tracking_id'))) {
-      return NextResponse.json({ error: '⚠️ Esa es la URL de un producto individual. Para importar en masa necesitas la URL de una búsqueda. Ejemplo: https://listado.mercadolibre.com.mx/bocinas-bluetooth' }, { status: 400 })
+      return NextResponse.json({ error: '⚠️ Esa es la URL de un producto individual. Para importar en masa necesitas la URL de una búsqueda. Ej: https://listado.mercadolibre.com.mx/bocinas-bluetooth' }, { status: 400 })
     }
 
-    let rawProducts: any[] = []
-    let sourceName = ''
     let searchQuery = ''
+    let sourceName = ''
 
     if (isMercadoLibre) {
       sourceName = 'MercadoLibre'
       searchQuery = extractKeywords(url)
       if (!searchQuery || searchQuery.length < 3) {
-        return NextResponse.json({ error: 'No se pudo extraer palabras clave de la URL. Intenta con: https://listado.mercadolibre.com.mx/bocinas-bluetooth' }, { status: 400 })
+        return NextResponse.json({ error: 'No se pudo extraer la búsqueda de la URL. Usa: https://listado.mercadolibre.com.mx/bocinas-bluetooth' }, { status: 400 })
       }
     } else if (isAmazon) {
       sourceName = 'Amazon'
       const kMatch = url.match(/[?&]k=([^&]+)/) || url.match(/field-keywords=([^&]+)/)
-      if (kMatch) searchQuery = decodeURIComponent(kMatch[1].replace(/\+/g, ' '))
-      else {
-        const path = url.split('/').find((s: string) => s.length > 10 && s.includes('-'))
-        searchQuery = path?.replace(/-/g, ' ').slice(0, 50) || 'productos'
-      }
+      searchQuery = kMatch ? decodeURIComponent(kMatch[1].replace(/\+/g, ' ')) : 'productos'
     } else {
       sourceName = 'AliExpress'
       const decoded = decodeURIComponent(url)
@@ -100,14 +99,16 @@ export async function POST(req: NextRequest) {
       searchQuery = path?.replace(/-/g, ' ').slice(0, 60) || 'productos'
     }
 
-    const mlData = await mlSearch(searchQuery, Math.min(limit, 48))
-    rawProducts = mlData.results || []
+    // Get official ML token
+    const token = await getMLToken()
+    const mlData = await mlSearch(searchQuery, Math.min(limit, 48), token)
+    const rawProducts = mlData.results || []
 
     if (rawProducts.length === 0) {
-      return NextResponse.json({ error: `No se encontraron productos para "${searchQuery}". Intenta con otra búsqueda.` }, { status: 400 })
+      return NextResponse.json({ error: `No se encontraron productos para "${searchQuery}".` }, { status: 400 })
     }
 
-    // Check existing to avoid duplicates
+    // Check duplicates
     const { data: existing } = await supabaseAdmin.from('products').select('source_url').not('source_url', 'is', null)
     const existingUrls = new Set((existing || []).map((p: any) => p.source_url))
 
@@ -122,10 +123,10 @@ export async function POST(req: NextRequest) {
       const imgs = item.thumbnail ? [fixImg(item.thumbnail)] : []
       const suggestedPrice = Math.ceil(item.price * (1 + margin / 100))
 
-      let description = `${item.title} — excelente calidad al mejor precio. ¡Envío rápido!`
+      let description = `${item.title} — excelente calidad al mejor precio. ¡Envío rápido a toda la República!`
       try {
         description = await groqChat([
-          { role: 'system', content: 'Eres experto en ecommerce mexicano. Escribe una descripción de producto atractiva en español. Máximo 60 palabras. Solo párrafo.' },
+          { role: 'system', content: 'Eres experto en ecommerce mexicano. Escribe descripción de producto atractiva en español. Máximo 60 palabras. Solo párrafo.' },
           { role: 'user', content: `Descripción para: "${item.title}". Precio: $${suggestedPrice} MXN.` },
         ])
       } catch { /* use default */ }

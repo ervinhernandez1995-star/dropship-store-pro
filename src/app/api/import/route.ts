@@ -2,6 +2,22 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { groqChat } from '@/lib/groq'
 
+async function getMLToken(): Promise<string> {
+  const res = await fetch('https://api.mercadolibre.com/oauth/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Accept': 'application/json' },
+    body: new URLSearchParams({
+      grant_type: 'client_credentials',
+      client_id: process.env.ML_CLIENT_ID!,
+      client_secret: process.env.ML_CLIENT_SECRET!,
+    }),
+    cache: 'no-store',
+  })
+  if (!res.ok) return ''
+  const data = await res.json()
+  return data.access_token || ''
+}
+
 function fixImageUrl(url: string): string {
   if (!url) return ''
   return url.replace('http://', 'https://').replace(/-I\.jpg/, '-O.jpg').replace(/-S\.jpg/, '-O.jpg').replace(/-V\.jpg/, '-O.jpg')
@@ -18,7 +34,8 @@ function detectCategory(catId: string): string {
 }
 
 async function fetchMLItem(itemId: string) {
-  const res = await fetch(`https://api.mercadolibre.com/items/${itemId}`, { headers: { Accept: 'application/json' } })
+  const tok = await getMLToken()
+  const res = await fetch(`https://api.mercadolibre.com/items/${itemId}`, { headers: { Accept: 'application/json', ...(tok ? { Authorization: `Bearer ${tok}` } : {}) }, cache: 'no-store' })
   if (!res.ok) return null
   return res.json()
 }
