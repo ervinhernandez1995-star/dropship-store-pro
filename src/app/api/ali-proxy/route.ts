@@ -85,7 +85,7 @@ export async function GET(req: NextRequest) {
       || html.match(/class="[^"]*price[^"]*"[^>]*>[\s\S]*?(\$[\d,\.]+)/)
       || html.match(/"minAmount":\{"value":([\d.]+)/)
 
-    const imgMatches = [...html.matchAll(/"imagePathList":\["([^"]+)"(?:,"([^"]+)")*\]/g)]
+    // imgMatches removed - using imgListMatch below instead
     const images: string[] = []
     const imgListMatch = html.match(/"imagePathList":\[([^\]]+)\]/)
     if (imgListMatch) {
