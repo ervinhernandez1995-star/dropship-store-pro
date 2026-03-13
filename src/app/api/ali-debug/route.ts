@@ -11,17 +11,17 @@ export async function GET(req: NextRequest) {
   )
   const data = await res.json()
   
-  // Extract just the price-related fields so it's easy to read
-  const item = data?.result?.item || data?.item || data
+  const result = data?.result || {}
+  const item = result?.item || result?.data || {}
   const sku = item?.sku || {}
-  
+
   return NextResponse.json({
     status: res.status,
+    result_keys: Object.keys(result),
+    item_keys: Object.keys(item),
+    sku_keys: Object.keys(sku),
     sku_def: sku?.def || {},
-    sku_base: sku?.base || sku?.skus || [],
-    item_prices: Object.fromEntries(
-      Object.entries(item || {}).filter(([k]) => k.toLowerCase().includes('price') || k.toLowerCase().includes('sale') || k.toLowerCase().includes('amount'))
-    ),
-    full_item_keys: Object.keys(item || {})
+    sku_props: sku?.props || [],
+    result_sample: JSON.stringify(result).slice(0, 4000)
   })
 }
