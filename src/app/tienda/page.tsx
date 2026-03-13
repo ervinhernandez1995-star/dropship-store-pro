@@ -140,23 +140,33 @@ export default function TiendaPage() {
 function ProductCard({ product, onAddToCart }: { product: Product; onAddToCart: (p: Product) => void }) {
   const img = product.images?.[0]
   return (
-    <div className="card fade-in" style={{ padding: 0, overflow: 'hidden', transition: 'all .2s', cursor: 'pointer' }}
+    <div className="card fade-in" style={{ padding: 0, overflow: 'hidden', transition: 'all .2s' }}
       onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--accent)'; (e.currentTarget as HTMLElement).style.transform = 'translateY(-3px)' }}
       onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--border)'; (e.currentTarget as HTMLElement).style.transform = 'translateY(0)' }}>
-      <div style={{ height: 200, background: 'linear-gradient(135deg,var(--bg3),var(--card))', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-        {img ? <img src={img} alt={product.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span style={{ fontSize: 64 }}>📦</span>}
-      </div>
+      {/* Clickable image → product detail */}
+      <a href={`/producto/${product.id}`} style={{ textDecoration: 'none', display: 'block' }}>
+        <div style={{ height: 200, background: 'linear-gradient(135deg,var(--bg3),var(--card))', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', cursor: 'pointer' }}>
+          {img ? <img src={img} alt={product.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span style={{ fontSize: 64 }}>📦</span>}
+        </div>
+      </a>
       <div style={{ padding: 16 }}>
         <div style={{ fontSize: 11, color: 'var(--accent2)', fontWeight: 600, marginBottom: 4, textTransform: 'uppercase' }}>{product.category}</div>
-        <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 8, lineHeight: 1.3, color: 'var(--text)' }}>{product.name}</h3>
+        <a href={`/producto/${product.id}`} style={{ textDecoration: 'none' }}>
+          <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 8, lineHeight: 1.3, color: 'var(--text)', cursor: 'pointer' }}>{product.name}</h3>
+        </a>
         <p style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 12, lineHeight: 1.5, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{product.description}</p>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
           <span style={{ fontFamily: 'Syne, sans-serif', fontSize: 22, fontWeight: 800, color: 'var(--accent)' }}>${product.price.toLocaleString('es-MX')}<span style={{ fontSize: 12, color: 'var(--text3)', marginLeft: 2 }}> MXN</span></span>
           <span style={{ fontSize: 11, color: product.stock > 0 ? 'var(--accent3)' : 'var(--red)', fontWeight: 600 }}>{product.stock > 0 ? `✓ ${product.stock} disponibles` : '✗ Agotado'}</span>
         </div>
-        <button onClick={() => onAddToCart(product)} disabled={product.stock === 0} className="btn-primary" style={{ width: '100%', padding: '10px', fontSize: 14 }}>
-          {product.stock === 0 ? 'Sin stock' : '🛒 Agregar al carrito'}
-        </button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <a href={`/producto/${product.id}`} style={{ flex: 1, padding: '10px', fontSize: 13, background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 10, color: 'var(--text2)', textAlign: 'center', textDecoration: 'none', fontWeight: 600 }}>
+            Ver detalles
+          </a>
+          <button onClick={() => onAddToCart(product)} disabled={product.stock === 0} className="btn-primary" style={{ flex: 1, padding: '10px', fontSize: 13 }}>
+            {product.stock === 0 ? 'Sin stock' : '🛒 Al carrito'}
+          </button>
+        </div>
       </div>
     </div>
   )

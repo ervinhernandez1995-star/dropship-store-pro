@@ -721,11 +721,11 @@ function AdminBulkImporter({ onRefresh, onGoProducts }: { onRefresh: () => void;
   const [error, setError] = useState('')
 
   const examples = [
-    { label: 'Bocinas bluetooth ML', url: 'https://listado.mercadolibre.com.mx/bocinas-bluetooth' },
-    { label: 'Auriculares ML', url: 'https://listado.mercadolibre.com.mx/auriculares-bluetooth' },
-    { label: 'Smartwatch ML', url: 'https://listado.mercadolibre.com.mx/smartwatch' },
-    { label: 'Ropa deportiva ML', url: 'https://listado.mercadolibre.com.mx/ropa-deportiva' },
-    { label: 'Cocina y hogar ML', url: 'https://listado.mercadolibre.com.mx/cocina' },
+    { label: '🛒 Bocinas AliExpress', url: 'https://www.aliexpress.com/wholesale?SearchText=bocinas+bluetooth' },
+    { label: '🛒 Auriculares AliExpress', url: 'https://www.aliexpress.com/wholesale?SearchText=auriculares+bluetooth' },
+    { label: '🛒 Smartwatch AliExpress', url: 'https://www.aliexpress.com/wholesale?SearchText=smartwatch' },
+    { label: '🛒 Ropa deportiva AliExpress', url: 'https://www.aliexpress.com/wholesale?SearchText=ropa+deportiva' },
+    { label: '🛒 Cocina AliExpress', url: 'https://www.aliexpress.com/wholesale?SearchText=cocina+hogar' },
   ]
 
   const extractKeywords = (u: string): string => {
@@ -784,16 +784,48 @@ function AdminBulkImporter({ onRefresh, onGoProducts }: { onRefresh: () => void;
         rawProducts = mlData.results || []
         sourceName = 'Amazon'
       } else if (isAliExpress) {
-        const decoded = decodeURIComponent(url)
-        const path = decoded.split('/').find((s: string) => s.length > 15 && s.includes('-')) || ''
-        searchQuery = path.replace(/-/g, ' ').slice(0, 60) || 'productos'
-        setProgress(`🔍 Buscando "${searchQuery}"...`)
-        const qali = encodeURIComponent('/sites/MLM/search?q=' + encodeURIComponent(searchQuery) + '&limit=' + Math.min(limit, 48))
-        const mlRes = await fetch(`/api/ml-proxy?path=${qali}`)
-        if (!mlRes.ok) throw new Error(`Error ${mlRes.status} al consultar MercadoLibre`)
-        const mlData = await mlRes.json()
-        rawProducts = mlData.results || []
+        // Extract search keywords from AliExpress URL
+        const qMatch = url.match(/[?&](?:SearchText|search_text|q|keyword)=([^&]+)/i)
+        const pathKeyword = url.split('/').find((s: string) => s.length > 15 && s.includes('-') && !s.includes('.')) || ''
+        searchQuery = qMatch
+          ? decodeURIComponent(qMatch[1].replace(/\+/g, ' '))
+          : pathKeyword.replace(/-/g, ' ').slice(0, 60) || 'productos'
         sourceName = 'AliExpress'
+        setProgress(`🔍 Buscando "${searchQuery}" en AliExpress...`)
+
+        // Step 1: Search AliExpress via RapidAPI
+        const searchRes = await fetch(`/api/ali-search?q=${encodeURIComponent(searchQuery)}&limit=${Math.min(limit, 40)}`)
+        if (!searchRes.ok) throw new Error(`Error al buscar en AliExpress: ${searchRes.status}`)
+        const searchData = await searchRes.json()
+        const itemIds: string[] = searchData.ids || []
+
+        if (itemIds.length === 0) throw new Error(`No se encontraron productos para "${searchQuery}" en AliExpress`)
+
+        setProgress(`✅ ${itemIds.length} productos encontrados. Obteniendo detalles...`)
+
+        // Step 2: Fetch details for each item and build rawProducts array
+        for (let i = 0; i < Math.min(itemIds.length, limit); i++) {
+          const id = itemIds[i]
+          setProgress(`📦 Obteniendo producto ${i+1}/${Math.min(itemIds.length, limit)}...`)
+          try {
+            const detailRes = await fetch(`/api/ali-proxy?url=https://www.aliexpress.com/item/${id}.html`)
+            const detail = await detailRes.json()
+            if (detail.raw?.title && detail.raw?.price > 0) {
+              rawProducts.push({
+                title: detail.raw.title,
+                price: detail.raw.price,
+                available_quantity: 50,
+                category_id: '',
+                permalink: `https://www.aliexpress.com/item/${id}.html`,
+                thumbnail: detail.raw.images?.[0] || '',
+                images: detail.raw.images || [],
+                source: 'aliexpress',
+                ali_id: id,
+              })
+            }
+          } catch { /* skip failed items */ }
+          await new Promise(r => setTimeout(r, 200))
+        }
       } else {
         setError('URL no reconocida.'); setLoading(false); return
       }
