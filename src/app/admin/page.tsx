@@ -2,60 +2,63 @@
 import { useState, useEffect } from 'react'
 import type { Product, Order } from '@/lib/supabase'
 
-type Tab = 'dashboard' | 'productos' | 'pedidos'
+type Tab = 'dashboard' | 'productos' | 'importar' | 'pedidos'
 
 export default function AdminPage() {
   const [tab, setTab] = useState<Tab>('dashboard')
   const [products, setProducts] = useState<Product[]>([])
   const [orders, setOrders] = useState<Order[]>([])
-  const [loading, setLoading] = useState(true)
 
   useEffect(() => { loadAll() }, [])
 
   const loadAll = async () => {
-    setLoading(true)
     const [pr, or] = await Promise.all([
-      fetch('/api/products?admin=true').then(r => r.json()),
-      fetch('/api/orders').then(r => r.json()),
+      fetch('/api/products?admin=true').then(r => r.json()).catch(() => []),
+      fetch('/api/orders').then(r => r.json()).catch(() => []),
     ])
-    setProducts(pr || [])
-    setOrders(or || [])
-    setLoading(false)
+    setProducts(Array.isArray(pr) ? pr : [])
+    setOrders(Array.isArray(or) ? or : [])
   }
 
   const totalRevenue = orders.filter(o => o.payment_status === 'pagado').reduce((s, o) => s + o.total, 0)
   const totalCommission = orders.filter(o => o.payment_status === 'pagado').reduce((s, o) => s + o.commission, 0)
   const pendingOrders = orders.filter(o => o.status === 'pendiente').length
 
+  const NAV = [
+    { id: 'dashboard', icon: '📊', label: 'Dashboard' },
+    { id: 'importar', icon: '🔗', label: 'Importar', badge: '¡Nuevo!' },
+    { id: 'productos', icon: '📦', label: 'Productos', badge: products.length || undefined },
+    { id: 'pedidos', icon: '🛒', label: 'Pedidos', badge: pendingOrders || undefined },
+  ] as { id: Tab; icon: string; label: string; badge?: any }[]
+
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg)', display: 'flex' }}>
       {/* SIDEBAR */}
-      <aside style={{ width: 220, background: 'var(--bg2)', borderRight: '1px solid var(--border)', position: 'fixed', height: '100vh', display: 'flex', flexDirection: 'column' }}>
+      <aside style={{ width: 220, background: 'var(--bg2)', borderRight: '1px solid var(--border)', position: 'fixed', height: '100vh', display: 'flex', flexDirection: 'column', zIndex: 10 }}>
         <div style={{ padding: '24px 20px', borderBottom: '1px solid var(--border)' }}>
-          <div style={{ fontFamily: 'Syne, sans-serif', fontSize: 18, fontWeight: 800, background: 'linear-gradient(135deg,#00d4ff,#7c3aed)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>DropShip Pro</div>
-          <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>Panel de Administración</div>
+          <div style={{ fontFamily: 'Syne, sans-serif', fontSize: 20, fontWeight: 800, background: 'linear-gradient(135deg,#00d4ff,#7c3aed)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>DropShip Pro</div>
+          <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>Panel Admin 🔒</div>
         </div>
         <nav style={{ padding: '16px 8px', flex: 1 }}>
-          {([
-            { id: 'dashboard', icon: '📊', label: 'Dashboard' },
-            { id: 'productos', icon: '📦', label: 'Productos' },
-            { id: 'pedidos', icon: '🛒', label: 'Pedidos', badge: pendingOrders },
-          ] as { id: Tab; icon: string; label: string; badge?: number }[]).map(item => (
-            <button key={item.id} onClick={() => setTab(item.id)} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 8, border: 'none', background: tab === item.id ? 'rgba(0,212,255,0.1)' : 'transparent', color: tab === item.id ? 'var(--accent)' : 'var(--text2)', cursor: 'pointer', fontSize: 14, fontWeight: 600, marginBottom: 4, fontFamily: 'inherit', textAlign: 'left', transition: 'all .2s' }}>
-              <span>{item.icon}</span>
+          {NAV.map(item => (
+            <button key={item.id} onClick={() => setTab(item.id)} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '11px 12px', borderRadius: 8, border: 'none', background: tab === item.id ? 'rgba(0,212,255,0.12)' : 'transparent', color: tab === item.id ? 'var(--accent)' : 'var(--text2)', cursor: 'pointer', fontSize: 14, fontWeight: 600, marginBottom: 4, fontFamily: 'inherit', textAlign: 'left', transition: 'all .2s', borderLeft: tab === item.id ? '3px solid var(--accent)' : '3px solid transparent' }}>
+              <span style={{ fontSize: 16 }}>{item.icon}</span>
               <span style={{ flex: 1 }}>{item.label}</span>
-              {item.badge ? <span style={{ background: 'var(--red)', color: '#fff', fontSize: 10, padding: '2px 6px', borderRadius: 10 }}>{item.badge}</span> : null}
+              {item.badge !== undefined && (
+                <span style={{ background: typeof item.badge === 'string' ? 'var(--accent2)' : 'var(--red)', color: '#fff', fontSize: 10, padding: '2px 6px', borderRadius: 10, fontWeight: 700 }}>{item.badge}</span>
+              )}
             </button>
           ))}
         </nav>
-        <div style={{ padding: 16, borderTop: '1px solid var(--border)' }}>
-          <a href="/tienda" target="_blank" style={{ display: 'block', textAlign: 'center', padding: '8px', background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: 8, color: 'var(--accent3)', textDecoration: 'none', fontSize: 13, fontWeight: 600 }}>🌐 Ver tienda →</a>
+        <div style={{ padding: 16, borderTop: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <a href="/tienda" target="_blank" style={{ display: 'block', textAlign: 'center', padding: '9px', background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: 8, color: 'var(--accent3)', textDecoration: 'none', fontSize: 13, fontWeight: 600 }}>🌐 Ver tienda →</a>
         </div>
       </aside>
 
       {/* MAIN */}
-      <main style={{ marginLeft: 220, flex: 1, padding: 28 }}>
+      <main style={{ marginLeft: 220, flex: 1, padding: 28, minHeight: '100vh' }}>
         {tab === 'dashboard' && <AdminDashboard products={products} orders={orders} totalRevenue={totalRevenue} totalCommission={totalCommission} />}
+        {tab === 'importar' && <AdminImporter onRefresh={loadAll} onGoProducts={() => setTab('productos')} />}
         {tab === 'productos' && <AdminProducts products={products} onRefresh={loadAll} />}
         {tab === 'pedidos' && <AdminOrders orders={orders} onRefresh={loadAll} />}
       </main>
@@ -63,17 +66,20 @@ export default function AdminPage() {
   )
 }
 
-// ── DASHBOARD ──────────────────────────────────────────────
-function AdminDashboard({ products, orders, totalRevenue, totalCommission }: { products: Product[]; orders: Order[]; totalRevenue: number; totalCommission: number }) {
+// ══════════════════════════════════════════
+// DASHBOARD
+// ══════════════════════════════════════════
+function AdminDashboard({ products, orders, totalRevenue, totalCommission }: any) {
   const stats = [
     { icon: '💰', value: `$${totalRevenue.toLocaleString('es-MX')}`, label: 'Ingresos totales', color: '#00d4ff' },
     { icon: '🎯', value: `$${totalCommission.toLocaleString('es-MX')}`, label: 'Tu ganancia', color: '#10b981' },
-    { icon: '📦', value: String(products.length), label: 'Productos activos', color: '#7c3aed' },
+    { icon: '📦', value: String(products.length), label: 'Productos', color: '#7c3aed' },
     { icon: '🛒', value: String(orders.length), label: 'Pedidos totales', color: '#f59e0b' },
   ]
   return (
-    <div>
-      <h1 style={{ fontFamily: 'Syne, sans-serif', fontSize: 24, fontWeight: 800, marginBottom: 24 }}>Dashboard</h1>
+    <div className="fade-in">
+      <h1 style={{ fontFamily: 'Syne, sans-serif', fontSize: 26, fontWeight: 800, marginBottom: 8 }}>Dashboard</h1>
+      <p style={{ color: 'var(--text2)', fontSize: 14, marginBottom: 28 }}>Resumen de tu tienda en tiempo real</p>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 16, marginBottom: 28 }}>
         {stats.map(s => (
           <div key={s.label} className="card" style={{ position: 'relative', overflow: 'hidden' }}>
@@ -86,48 +92,201 @@ function AdminDashboard({ products, orders, totalRevenue, totalCommission }: { p
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
         <div className="card">
-          <h3 style={{ fontFamily: 'Syne, sans-serif', fontSize: 15, fontWeight: 700, marginBottom: 16 }}>Últimos pedidos</h3>
-          {orders.slice(0, 5).map(o => (
+          <h3 style={{ fontFamily: 'Syne, sans-serif', fontSize: 16, fontWeight: 700, marginBottom: 16 }}>🛒 Últimos pedidos</h3>
+          {orders.slice(0, 6).map((o: any) => (
             <div key={o.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px solid rgba(30,45,71,.5)', fontSize: 13 }}>
-              <div>
-                <div style={{ fontWeight: 600 }}>{o.order_number}</div>
-                <div style={{ color: 'var(--text2)', fontSize: 12 }}>{o.customer_name}</div>
-              </div>
-              <div style={{ textAlign: 'right' }}>
-                <div style={{ fontWeight: 700, color: 'var(--accent)' }}>${o.total.toLocaleString()}</div>
-                <StatusBadge status={o.status} />
-              </div>
+              <div><div style={{ fontWeight: 600 }}>{o.order_number}</div><div style={{ color: 'var(--text2)', fontSize: 12 }}>{o.customer_name}</div></div>
+              <div style={{ textAlign: 'right' }}><div style={{ fontWeight: 700, color: 'var(--accent)' }}>${o.total.toLocaleString()}</div><StatusBadge status={o.status} /></div>
             </div>
           ))}
-          {orders.length === 0 && <div style={{ color: 'var(--text3)', textAlign: 'center', padding: '20px 0' }}>Sin pedidos aún</div>}
+          {orders.length === 0 && <div style={{ color: 'var(--text3)', textAlign: 'center', padding: '20px 0', fontSize: 14 }}>Sin pedidos aún — ¡comparte tu tienda!</div>}
         </div>
         <div className="card">
-          <h3 style={{ fontFamily: 'Syne, sans-serif', fontSize: 15, fontWeight: 700, marginBottom: 16 }}>Productos más vendidos</h3>
-          {[...products].sort((a, b) => b.sold - a.sold).slice(0, 5).map((p, i) => (
+          <h3 style={{ fontFamily: 'Syne, sans-serif', fontSize: 16, fontWeight: 700, marginBottom: 16 }}>🏆 Más vendidos</h3>
+          {[...products].sort((a: any, b: any) => b.sold - a.sold).slice(0, 6).map((p: any, i: number) => (
             <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0', borderBottom: '1px solid rgba(30,45,71,.5)' }}>
-              <div style={{ width: 24, height: 24, borderRadius: 6, background: i < 3 ? 'linear-gradient(135deg,#f59e0b,#f97316)' : 'var(--bg3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 800, color: i < 3 ? '#000' : 'var(--text2)', flexShrink: 0 }}>{i + 1}</div>
-              <div style={{ flex: 1, fontSize: 13, fontWeight: 600 }}>{p.name}</div>
-              <div style={{ fontSize: 13, color: 'var(--accent3)', fontWeight: 700 }}>{p.sold} vendidos</div>
+              <div style={{ width: 28, height: 28, borderRadius: 8, background: i < 3 ? 'linear-gradient(135deg,#f59e0b,#f97316)' : 'var(--bg3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 800, color: i < 3 ? '#000' : 'var(--text2)', flexShrink: 0 }}>{i + 1}</div>
+              <div style={{ width: 32, height: 32, borderRadius: 6, overflow: 'hidden', background: 'var(--bg3)', flexShrink: 0 }}>
+                {p.images?.[0] ? <img src={p.images[0]} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="" /> : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16 }}>📦</div>}
+              </div>
+              <div style={{ flex: 1, fontSize: 13 }}>{p.name}</div>
+              <div style={{ fontSize: 13, color: 'var(--accent3)', fontWeight: 700 }}>{p.sold} 🛒</div>
             </div>
           ))}
-          {products.length === 0 && <div style={{ color: 'var(--text3)', textAlign: 'center', padding: '20px 0' }}>Sin productos aún</div>}
+          {products.length === 0 && <div style={{ color: 'var(--text3)', textAlign: 'center', padding: '20px 0', fontSize: 14 }}>Importa productos para empezar</div>}
         </div>
       </div>
     </div>
   )
 }
 
-// ── PRODUCTOS ─────────────────────────────────────────────────
+// ══════════════════════════════════════════
+// IMPORTADOR DE MERCADOLIBRE
+// ══════════════════════════════════════════
+function AdminImporter({ onRefresh, onGoProducts }: { onRefresh: () => void; onGoProducts: () => void }) {
+  const [url, setUrl] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [result, setResult] = useState<any>(null)
+  const [error, setError] = useState('')
+  const [history, setHistory] = useState<any[]>([])
+
+  const importProduct = async () => {
+    if (!url.trim()) return
+    setLoading(true)
+    setError('')
+    setResult(null)
+    try {
+      const res = await fetch('/api/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: url.trim() }),
+      })
+      const data = await res.json()
+      if (data.error) { setError(data.error); setLoading(false); return }
+      setResult(data)
+      setHistory(h => [data, ...h.slice(0, 4)])
+      setUrl('')
+      onRefresh()
+    } catch (e: any) {
+      setError('Error de conexión. Verifica tu internet.')
+    }
+    setLoading(false)
+  }
+
+  return (
+    <div className="fade-in">
+      <h1 style={{ fontFamily: 'Syne, sans-serif', fontSize: 26, fontWeight: 800, marginBottom: 8 }}>Importar de MercadoLibre</h1>
+      <p style={{ color: 'var(--text2)', fontSize: 14, marginBottom: 28 }}>Pega la URL de cualquier producto y lo importamos automáticamente con fotos, descripción y precio sugerido</p>
+
+      {/* CÓMO FUNCIONA */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 12, marginBottom: 28 }}>
+        {[
+          { step: '1', icon: '🔗', title: 'Copia la URL', desc: 'Ve a MercadoLibre, abre cualquier producto y copia la URL del navegador' },
+          { step: '2', icon: '🤖', title: 'Importación automática', desc: 'La IA extrae nombre, fotos, precio y genera una descripción atractiva' },
+          { step: '3', icon: '✅', title: 'Listo para vender', desc: 'El producto aparece en tu tienda con margen de ganancia del 15%' },
+        ].map(s => (
+          <div key={s.step} className="card" style={{ textAlign: 'center', padding: 20 }}>
+            <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'linear-gradient(135deg,#00d4ff,#7c3aed)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Syne, sans-serif', fontWeight: 800, fontSize: 16, color: '#000', margin: '0 auto 12px' }}>{s.step}</div>
+            <div style={{ fontSize: 28, marginBottom: 8 }}>{s.icon}</div>
+            <div style={{ fontWeight: 700, marginBottom: 6 }}>{s.title}</div>
+            <div style={{ fontSize: 12, color: 'var(--text2)', lineHeight: 1.5 }}>{s.desc}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* INPUT */}
+      <div className="card" style={{ marginBottom: 24 }}>
+        <label className="label">URL del producto de MercadoLibre</label>
+        <div style={{ display: 'flex', gap: 10, marginBottom: 8 }}>
+          <input
+            className="input"
+            value={url}
+            onChange={e => setUrl(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && importProduct()}
+            placeholder="https://www.mercadolibre.com.mx/auriculares-bluetooth/p/MLM123456789..."
+            style={{ flex: 1, fontSize: 14 }}
+          />
+          <button onClick={importProduct} disabled={loading || !url.trim()} className="btn-primary" style={{ padding: '0 28px', whiteSpace: 'nowrap', minWidth: 160 }}>
+            {loading ? '⏳ Importando...' : '🔗 Importar producto'}
+          </button>
+        </div>
+        <p style={{ fontSize: 12, color: 'var(--text3)' }}>💡 Tip: En MercadoLibre abre el producto → copia toda la URL del navegador → pégala aquí</p>
+      </div>
+
+      {/* ERROR */}
+      {error && (
+        <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 10, padding: '14px 18px', marginBottom: 20, color: 'var(--red)', fontSize: 14 }}>
+          ⚠️ {error}
+        </div>
+      )}
+
+      {/* LOADING */}
+      {loading && (
+        <div className="card" style={{ textAlign: 'center', padding: '40px' }}>
+          <div style={{ fontSize: 48, marginBottom: 16 }}>🤖</div>
+          <div style={{ fontFamily: 'Syne, sans-serif', fontSize: 18, fontWeight: 700, marginBottom: 8 }}>Importando producto...</div>
+          <div style={{ color: 'var(--text2)', fontSize: 14 }}>Obteniendo datos de MercadoLibre y generando descripción con IA</div>
+        </div>
+      )}
+
+      {/* RESULTADO EXITOSO */}
+      {result && !loading && (
+        <div style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: 14, padding: 24, marginBottom: 24 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+            <span style={{ fontSize: 28 }}>✅</span>
+            <div>
+              <div style={{ fontFamily: 'Syne, sans-serif', fontSize: 18, fontWeight: 800, color: 'var(--accent3)' }}>¡Producto importado exitosamente!</div>
+              <div style={{ fontSize: 13, color: 'var(--text2)' }}>Ya está visible en tu tienda pública</div>
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+            {result.product?.images?.[0] && (
+              <img src={result.product.images[0]} style={{ width: 120, height: 120, objectFit: 'cover', borderRadius: 10, border: '1px solid var(--border)' }} alt="" />
+            )}
+            <div style={{ flex: 1 }}>
+              <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 6 }}>{result.product?.name}</div>
+              <div style={{ fontSize: 13, color: 'var(--text2)', marginBottom: 12, lineHeight: 1.5 }}>{result.product?.description?.slice(0, 120)}...</div>
+              <div style={{ display: 'flex', gap: 16 }}>
+                <div style={{ fontSize: 13 }}>💰 Precio costo: <strong style={{ color: 'var(--text2)' }}>${result.original_price?.toLocaleString()} MXN</strong></div>
+                <div style={{ fontSize: 13 }}>🏷️ Precio venta: <strong style={{ color: 'var(--accent)' }}>${result.suggested_price?.toLocaleString()} MXN</strong></div>
+                <div style={{ fontSize: 13 }}>📸 Fotos: <strong style={{ color: 'var(--accent3)' }}>{result.images_found}</strong></div>
+              </div>
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
+            <button onClick={onGoProducts} className="btn-primary" style={{ padding: '8px 20px', fontSize: 13 }}>Ver en mis productos →</button>
+            <button onClick={() => { setResult(null); setUrl('') }} className="btn-ghost" style={{ padding: '8px 20px', fontSize: 13 }}>Importar otro</button>
+          </div>
+        </div>
+      )}
+
+      {/* HISTORIAL */}
+      {history.length > 0 && (
+        <div className="card">
+          <h3 style={{ fontFamily: 'Syne, sans-serif', fontSize: 15, fontWeight: 700, marginBottom: 14 }}>📋 Importados recientemente</h3>
+          {history.map((h, i) => (
+            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0', borderBottom: i < history.length - 1 ? '1px solid var(--border)' : 'none' }}>
+              {h.product?.images?.[0] && <img src={h.product.images[0]} style={{ width: 40, height: 40, borderRadius: 6, objectFit: 'cover' }} alt="" />}
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 13, fontWeight: 600 }}>{h.product?.name?.slice(0, 60)}...</div>
+                <div style={{ fontSize: 12, color: 'var(--text2)' }}>${h.suggested_price?.toLocaleString()} MXN · MercadoLibre</div>
+              </div>
+              <span style={{ background: 'rgba(16,185,129,0.1)', color: 'var(--accent3)', fontSize: 11, padding: '3px 10px', borderRadius: 20, fontWeight: 600 }}>✓ Importado</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ══════════════════════════════════════════
+// PRODUCTOS
+// ══════════════════════════════════════════
 function AdminProducts({ products, onRefresh }: { products: Product[]; onRefresh: () => void }) {
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing] = useState<Product | null>(null)
   const [saving, setSaving] = useState(false)
   const [generating, setGenerating] = useState(false)
+  const [search, setSearch] = useState('')
   const [form, setForm] = useState({ name: '', description: '', price: '', cost_price: '', stock: '', category: 'General', images: [] as string[], source_url: '', source_name: '', active: true })
   const [imgPreview, setImgPreview] = useState<string | null>(null)
 
-  const openNew = () => { setEditing(null); setForm({ name: '', description: '', price: '', cost_price: '', stock: '', category: 'General', images: [], source_url: '', source_name: '', active: true }); setImgPreview(null); setShowForm(true) }
-  const openEdit = (p: Product) => { setEditing(p); setForm({ name: p.name, description: p.description || '', price: String(p.price), cost_price: String(p.cost_price || 0), stock: String(p.stock), category: p.category, images: p.images || [], source_url: p.source_url || '', source_name: p.source_name || '', active: p.active }); setImgPreview(p.images?.[0] || null); setShowForm(true) }
+  const filtered = products.filter(p => p.name.toLowerCase().includes(search.toLowerCase()))
+
+  const openNew = () => {
+    setEditing(null)
+    setForm({ name: '', description: '', price: '', cost_price: '', stock: '', category: 'General', images: [], source_url: '', source_name: '', active: true })
+    setImgPreview(null)
+    setShowForm(true)
+  }
+
+  const openEdit = (p: Product) => {
+    setEditing(p)
+    setForm({ name: p.name, description: p.description || '', price: String(p.price), cost_price: String(p.cost_price || 0), stock: String(p.stock), category: p.category, images: p.images || [], source_url: p.source_url || '', source_name: p.source_name || '', active: p.active })
+    setImgPreview(p.images?.[0] || null)
+    setShowForm(true)
+  }
 
   const handleImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -138,7 +297,7 @@ function AdminProducts({ products, onRefresh }: { products: Product[]; onRefresh
       setImgPreview(base64)
       const res = await fetch('/api/upload', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image: base64 }) })
       const data = await res.json()
-      if (data.url) setForm(f => ({ ...f, images: [data.url, ...f.images.filter(i => !i.startsWith('data:'))] }))
+      if (data.url) setForm(f => ({ ...f, images: [data.url, ...f.images.filter((i: string) => !i.startsWith('data:'))] }))
     }
     reader.readAsDataURL(file)
   }
@@ -178,81 +337,96 @@ function AdminProducts({ products, onRefresh }: { products: Product[]; onRefresh
   }
 
   return (
-    <div>
+    <div className="fade-in">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-        <h1 style={{ fontFamily: 'Syne, sans-serif', fontSize: 24, fontWeight: 800 }}>Productos ({products.length})</h1>
-        <button onClick={openNew} className="btn-primary" style={{ padding: '10px 20px', fontSize: 14 }}>+ Nuevo producto</button>
-      </div>
-
-      {/* TABLA */}
-      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-            <thead>
-              <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                {['Producto', 'Precio', 'Costo', 'Margen', 'Stock', 'Vendidos', 'Estado', 'Acciones'].map(h => (
-                  <th key={h} style={{ textAlign: 'left', padding: '12px 16px', color: 'var(--text3)', fontSize: 11, textTransform: 'uppercase', letterSpacing: 1, fontWeight: 600 }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {products.map(p => {
-                const margin = p.price > 0 ? Math.round(((p.price - p.cost_price) / p.price) * 100) : 0
-                return (
-                  <tr key={p.id} style={{ borderBottom: '1px solid rgba(30,45,71,.4)' }}>
-                    <td style={{ padding: '12px 16px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <div style={{ width: 40, height: 40, borderRadius: 8, overflow: 'hidden', background: 'var(--bg3)', flexShrink: 0 }}>
-                          {p.images?.[0] ? <img src={p.images[0]} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18 }}>📦</div>}
-                        </div>
-                        <div>
-                          <div style={{ fontWeight: 600 }}>{p.name}</div>
-                          <div style={{ fontSize: 11, color: 'var(--text2)' }}>{p.category}</div>
-                        </div>
-                      </div>
-                    </td>
-                    <td style={{ padding: '12px 16px', fontWeight: 700, color: 'var(--accent)' }}>${p.price.toLocaleString()}</td>
-                    <td style={{ padding: '12px 16px', color: 'var(--text2)' }}>${p.cost_price.toLocaleString()}</td>
-                    <td style={{ padding: '12px 16px' }}><span style={{ background: 'rgba(16,185,129,.1)', color: 'var(--accent3)', padding: '2px 8px', borderRadius: 6, fontSize: 12, fontWeight: 700 }}>+{margin}%</span></td>
-                    <td style={{ padding: '12px 16px', color: p.stock < 10 ? 'var(--red)' : 'var(--text)' }}>{p.stock}</td>
-                    <td style={{ padding: '12px 16px' }}>{p.sold}</td>
-                    <td style={{ padding: '12px 16px' }}>
-                      <span style={{ background: p.active ? 'rgba(16,185,129,.1)' : 'rgba(239,68,68,.1)', color: p.active ? 'var(--accent3)' : 'var(--red)', padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 600 }}>{p.active ? '● Activo' : '● Pausado'}</span>
-                    </td>
-                    <td style={{ padding: '12px 16px' }}>
-                      <div style={{ display: 'flex', gap: 6 }}>
-                        <button onClick={() => openEdit(p)} className="btn-ghost" style={{ padding: '4px 10px', fontSize: 11 }}>✏️</button>
-                        <button onClick={() => toggle(p)} className="btn-ghost" style={{ padding: '4px 10px', fontSize: 11 }}>{p.active ? '⏸' : '▶'}</button>
-                        <button onClick={() => del(p.id)} style={{ padding: '4px 10px', fontSize: 11, background: 'rgba(239,68,68,.1)', border: '1px solid rgba(239,68,68,.3)', borderRadius: 6, color: 'var(--red)', cursor: 'pointer' }}>🗑</button>
-                      </div>
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-          {products.length === 0 && <div style={{ textAlign: 'center', padding: '40px', color: 'var(--text3)' }}>No hay productos. ¡Agrega el primero!</div>}
+        <div>
+          <h1 style={{ fontFamily: 'Syne, sans-serif', fontSize: 26, fontWeight: 800 }}>Productos ({products.length})</h1>
+          <p style={{ color: 'var(--text2)', fontSize: 14 }}>Gestiona tu catálogo de productos</p>
         </div>
+        <button onClick={openNew} className="btn-primary" style={{ padding: '10px 22px', fontSize: 14 }}>+ Nuevo producto</button>
       </div>
 
-      {/* MODAL PRODUCTO */}
+      <div style={{ marginBottom: 16 }}>
+        <input className="input" value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 Buscar productos..." style={{ maxWidth: 340 }} />
+      </div>
+
+      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+          <thead>
+            <tr style={{ borderBottom: '1px solid var(--border)', background: 'rgba(255,255,255,0.02)' }}>
+              {['Producto', 'Precio venta', 'Costo', 'Margen', 'Stock', 'Fuente', 'Estado', 'Acciones'].map(h => (
+                <th key={h} style={{ textAlign: 'left', padding: '13px 16px', color: 'var(--text3)', fontSize: 11, textTransform: 'uppercase', letterSpacing: 1, fontWeight: 600 }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.map(p => {
+              const margin = p.price > 0 ? Math.round(((p.price - p.cost_price) / p.price) * 100) : 0
+              return (
+                <tr key={p.id} style={{ borderBottom: '1px solid rgba(30,45,71,.4)', transition: 'background .15s' }}
+                  onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.02)')}
+                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                  <td style={{ padding: '12px 16px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <div style={{ width: 44, height: 44, borderRadius: 8, overflow: 'hidden', background: 'var(--bg3)', flexShrink: 0, border: '1px solid var(--border)' }}>
+                        {p.images?.[0] ? <img src={p.images[0]} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="" /> : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>📦</div>}
+                      </div>
+                      <div>
+                        <div style={{ fontWeight: 600, maxWidth: 200 }}>{p.name.slice(0, 45)}{p.name.length > 45 ? '...' : ''}</div>
+                        <div style={{ fontSize: 11, color: 'var(--text3)' }}>{p.category}</div>
+                      </div>
+                    </div>
+                  </td>
+                  <td style={{ padding: '12px 16px', fontWeight: 800, color: 'var(--accent)', fontSize: 15 }}>${p.price.toLocaleString()}</td>
+                  <td style={{ padding: '12px 16px', color: 'var(--text2)' }}>${p.cost_price.toLocaleString()}</td>
+                  <td style={{ padding: '12px 16px' }}><span style={{ background: margin > 20 ? 'rgba(16,185,129,.15)' : 'rgba(245,158,11,.15)', color: margin > 20 ? 'var(--accent3)' : '#f59e0b', padding: '3px 10px', borderRadius: 20, fontSize: 12, fontWeight: 700 }}>+{margin}%</span></td>
+                  <td style={{ padding: '12px 16px', color: p.stock < 5 ? 'var(--red)' : 'var(--text)', fontWeight: p.stock < 5 ? 700 : 400 }}>{p.stock < 5 ? '⚠️ ' : ''}{p.stock}</td>
+                  <td style={{ padding: '12px 16px' }}>
+                    {p.source_name ? <span style={{ background: 'rgba(124,58,237,.1)', color: '#a78bfa', padding: '2px 8px', borderRadius: 6, fontSize: 11 }}>{p.source_name}</span> : <span style={{ color: 'var(--text3)', fontSize: 12 }}>Manual</span>}
+                  </td>
+                  <td style={{ padding: '12px 16px' }}>
+                    <span style={{ background: p.active ? 'rgba(16,185,129,.12)' : 'rgba(239,68,68,.1)', color: p.active ? 'var(--accent3)' : 'var(--red)', padding: '4px 12px', borderRadius: 20, fontSize: 11, fontWeight: 700 }}>{p.active ? '● Activo' : '● Pausado'}</span>
+                  </td>
+                  <td style={{ padding: '12px 16px' }}>
+                    <div style={{ display: 'flex', gap: 5 }}>
+                      <button onClick={() => openEdit(p)} title="Editar" style={{ width: 30, height: 30, borderRadius: 6, background: 'rgba(0,212,255,.1)', border: '1px solid rgba(0,212,255,.2)', color: 'var(--accent)', cursor: 'pointer', fontSize: 13 }}>✏️</button>
+                      <button onClick={() => toggle(p)} title={p.active ? 'Pausar' : 'Activar'} style={{ width: 30, height: 30, borderRadius: 6, background: 'var(--bg3)', border: '1px solid var(--border)', color: 'var(--text2)', cursor: 'pointer', fontSize: 13 }}>{p.active ? '⏸' : '▶'}</button>
+                      <button onClick={() => del(p.id)} title="Eliminar" style={{ width: 30, height: 30, borderRadius: 6, background: 'rgba(239,68,68,.1)', border: '1px solid rgba(239,68,68,.2)', color: 'var(--red)', cursor: 'pointer', fontSize: 13 }}>🗑</button>
+                    </div>
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+        {filtered.length === 0 && (
+          <div style={{ textAlign: 'center', padding: '48px', color: 'var(--text3)' }}>
+            <div style={{ fontSize: 40, marginBottom: 12 }}>📦</div>
+            <div style={{ fontSize: 16, fontWeight: 600 }}>{search ? 'Sin resultados' : 'No hay productos aún'}</div>
+            <div style={{ fontSize: 13, marginTop: 6 }}>{search ? 'Intenta con otro término' : 'Usa el importador de MercadoLibre o agrega uno manualmente'}</div>
+          </div>
+        )}
+      </div>
+
+      {/* MODAL */}
       {showForm && (
-        <div onClick={() => setShowForm(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.7)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(4px)' }}>
-          <div onClick={e => e.stopPropagation()} style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 16, padding: 28, width: 560, maxHeight: '90vh', overflowY: 'auto' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-              <h2 style={{ fontFamily: 'Syne, sans-serif', fontSize: 18, fontWeight: 800 }}>{editing ? 'Editar' : 'Nuevo'} Producto</h2>
-              <button onClick={() => setShowForm(false)} style={{ background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 6, width: 28, height: 28, cursor: 'pointer', color: 'var(--text2)' }}>✕</button>
+        <div onClick={() => setShowForm(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.75)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(4px)' }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 16, padding: 28, width: 580, maxHeight: '90vh', overflowY: 'auto' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 22 }}>
+              <h2 style={{ fontFamily: 'Syne, sans-serif', fontSize: 20, fontWeight: 800 }}>{editing ? '✏️ Editar' : '➕ Nuevo'} Producto</h2>
+              <button onClick={() => setShowForm(false)} style={{ background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 8, width: 32, height: 32, cursor: 'pointer', color: 'var(--text2)', fontSize: 16 }}>✕</button>
             </div>
 
-            {/* IMAGEN */}
             <div style={{ marginBottom: 16 }}>
               <label className="label">Foto del producto</label>
               <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-                <div style={{ width: 80, height: 80, borderRadius: 10, background: 'var(--bg3)', border: '1px solid var(--border)', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28, flexShrink: 0 }}>
-                  {imgPreview ? <img src={imgPreview} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : '📦'}
+                <div style={{ width: 88, height: 88, borderRadius: 12, background: 'var(--bg3)', border: '2px solid var(--border)', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 32, flexShrink: 0 }}>
+                  {imgPreview ? <img src={imgPreview} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="" /> : '📦'}
                 </div>
-                <label style={{ flex: 1, border: '2px dashed var(--border)', borderRadius: 10, padding: '16px', textAlign: 'center', cursor: 'pointer', color: 'var(--text2)', fontSize: 13 }}>
-                  📸 Clic para subir foto
+                <label style={{ flex: 1, border: '2px dashed var(--border)', borderRadius: 10, padding: '20px', textAlign: 'center', cursor: 'pointer', color: 'var(--text2)', fontSize: 13, transition: 'border-color .2s' }}
+                  onMouseEnter={e => (e.currentTarget.style.borderColor = 'var(--accent)')}
+                  onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--border)')}>
+                  📸 Clic para subir foto<br /><span style={{ fontSize: 11, color: 'var(--text3)' }}>JPG, PNG, WebP</span>
                   <input type="file" accept="image/*" onChange={handleImage} style={{ display: 'none' }} />
                 </label>
               </div>
@@ -260,25 +434,21 @@ function AdminProducts({ products, onRefresh }: { products: Product[]; onRefresh
 
             <div style={{ marginBottom: 14 }}>
               <label className="label">Nombre del producto *</label>
-              <input className="input" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Ej: Auriculares Bluetooth Pro" />
+              <input className="input" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Ej: Auriculares Bluetooth Pro 40h" />
             </div>
 
             <div style={{ marginBottom: 14 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
                 <label className="label" style={{ margin: 0 }}>Descripción</label>
-                <button onClick={generateDesc} disabled={generating} style={{ background: 'linear-gradient(135deg,#7c3aed,#00d4ff)', border: 'none', borderRadius: 6, padding: '4px 10px', color: '#fff', fontSize: 11, cursor: 'pointer', fontWeight: 600 }}>
-                  {generating ? '⏳ Generando...' : '🤖 Generar con IA'}
+                <button onClick={generateDesc} disabled={generating} style={{ background: 'linear-gradient(135deg,#7c3aed,#00d4ff)', border: 'none', borderRadius: 6, padding: '5px 12px', color: '#fff', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}>
+                  {generating ? '⏳' : '🤖'} {generating ? 'Generando...' : 'Generar con IA'}
                 </button>
               </div>
               <textarea className="input" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} placeholder="Descripción del producto..." rows={3} style={{ resize: 'vertical' }} />
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 14 }}>
-              {[
-                { key: 'price', label: 'Precio venta *', placeholder: '499' },
-                { key: 'cost_price', label: 'Precio costo', placeholder: '200' },
-                { key: 'stock', label: 'Stock', placeholder: '50' },
-              ].map(f => (
+              {[{ key: 'price', label: 'Precio venta *', placeholder: '499' }, { key: 'cost_price', label: 'Precio costo', placeholder: '300' }, { key: 'stock', label: 'Stock', placeholder: '50' }].map(f => (
                 <div key={f.key}>
                   <label className="label">{f.label}</label>
                   <input className="input" type="number" value={(form as any)[f.key]} onChange={e => setForm(prev => ({ ...prev, [f.key]: e.target.value }))} placeholder={f.placeholder} />
@@ -286,7 +456,7 @@ function AdminProducts({ products, onRefresh }: { products: Product[]; onRefresh
               ))}
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 20 }}>
               <div>
                 <label className="label">Categoría</label>
                 <select className="input" value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))}>
@@ -294,19 +464,14 @@ function AdminProducts({ products, onRefresh }: { products: Product[]; onRefresh
                 </select>
               </div>
               <div>
-                <label className="label">Proveedor/Fuente</label>
-                <input className="input" value={form.source_name} onChange={e => setForm(f => ({ ...f, source_name: e.target.value }))} placeholder="AliExpress, Amazon..." />
+                <label className="label">Proveedor</label>
+                <input className="input" value={form.source_name} onChange={e => setForm(f => ({ ...f, source_name: e.target.value }))} placeholder="MercadoLibre, Amazon..." />
               </div>
-            </div>
-
-            <div style={{ marginBottom: 20 }}>
-              <label className="label">URL del producto original (opcional)</label>
-              <input className="input" value={form.source_url} onChange={e => setForm(f => ({ ...f, source_url: e.target.value }))} placeholder="https://aliexpress.com/item/..." />
             </div>
 
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
               <button onClick={() => setShowForm(false)} className="btn-ghost">Cancelar</button>
-              <button onClick={save} disabled={saving} className="btn-primary">{saving ? 'Guardando...' : editing ? 'Guardar cambios' : 'Crear producto'}</button>
+              <button onClick={save} disabled={saving} className="btn-primary" style={{ minWidth: 140 }}>{saving ? '⏳ Guardando...' : editing ? '✅ Guardar cambios' : '➕ Crear producto'}</button>
             </div>
           </div>
         </div>
@@ -315,50 +480,75 @@ function AdminProducts({ products, onRefresh }: { products: Product[]; onRefresh
   )
 }
 
-// ── PEDIDOS ────────────────────────────────────────────────────
+// ══════════════════════════════════════════
+// PEDIDOS
+// ══════════════════════════════════════════
 function AdminOrders({ orders, onRefresh }: { orders: Order[]; onRefresh: () => void }) {
+  const [filter, setFilter] = useState('todos')
+
+  const filtered = filter === 'todos' ? orders : orders.filter(o => o.status === filter)
+
   const updateStatus = async (id: string, status: string) => {
     await fetch('/api/orders', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, status }) })
     onRefresh()
   }
 
   return (
-    <div>
-      <h1 style={{ fontFamily: 'Syne, sans-serif', fontSize: 24, fontWeight: 800, marginBottom: 24 }}>Pedidos ({orders.length})</h1>
-      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-            <thead>
-              <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                {['Orden', 'Cliente', 'Total', 'Comisión', 'Pago', 'Estado', 'Fecha', 'Acciones'].map(h => (
-                  <th key={h} style={{ textAlign: 'left', padding: '12px 16px', color: 'var(--text3)', fontSize: 11, textTransform: 'uppercase', fontWeight: 600 }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {orders.map(o => (
-                <tr key={o.id} style={{ borderBottom: '1px solid rgba(30,45,71,.4)' }}>
-                  <td style={{ padding: '12px 16px', fontWeight: 700, color: 'var(--accent)', fontFamily: 'monospace' }}>{o.order_number}</td>
-                  <td style={{ padding: '12px 16px' }}>
-                    <div style={{ fontWeight: 600 }}>{o.customer_name}</div>
-                    <div style={{ fontSize: 11, color: 'var(--text2)' }}>{o.customer_email}</div>
-                  </td>
-                  <td style={{ padding: '12px 16px', fontWeight: 700 }}>${o.total.toLocaleString()}</td>
-                  <td style={{ padding: '12px 16px' }}><span style={{ background: 'rgba(16,185,129,.1)', color: 'var(--accent3)', padding: '2px 8px', borderRadius: 6, fontWeight: 700 }}>${o.commission.toLocaleString()}</span></td>
-                  <td style={{ padding: '12px 16px' }}><PayBadge status={o.payment_status} /></td>
-                  <td style={{ padding: '12px 16px' }}><StatusBadge status={o.status} /></td>
-                  <td style={{ padding: '12px 16px', color: 'var(--text3)', fontSize: 12 }}>{new Date(o.created_at).toLocaleDateString('es-MX')}</td>
-                  <td style={{ padding: '12px 16px' }}>
-                    <select value={o.status} onChange={e => updateStatus(o.id, e.target.value)} style={{ background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 6, padding: '4px 8px', color: 'var(--text)', fontSize: 12, cursor: 'pointer', outline: 'none' }}>
-                      {['pendiente','confirmado','enviado','entregado','cancelado'].map(s => <option key={s}>{s}</option>)}
-                    </select>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {orders.length === 0 && <div style={{ textAlign: 'center', padding: '40px', color: 'var(--text3)' }}>Sin pedidos aún. ¡Comparte tu tienda!</div>}
+    <div className="fade-in">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+        <div>
+          <h1 style={{ fontFamily: 'Syne, sans-serif', fontSize: 26, fontWeight: 800 }}>Pedidos ({orders.length})</h1>
+          <p style={{ color: 'var(--text2)', fontSize: 14 }}>Gestiona y actualiza el estado de tus pedidos</p>
         </div>
+      </div>
+
+      <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
+        {['todos', 'pendiente', 'confirmado', 'enviado', 'entregado', 'cancelado'].map(f => (
+          <button key={f} onClick={() => setFilter(f)} style={{ padding: '6px 14px', borderRadius: 20, fontSize: 12, fontWeight: 600, cursor: 'pointer', border: `1px solid ${filter === f ? 'var(--accent)' : 'var(--border)'}`, background: filter === f ? 'rgba(0,212,255,0.1)' : 'transparent', color: filter === f ? 'var(--accent)' : 'var(--text2)', textTransform: 'capitalize' }}>
+            {f} {f !== 'todos' && <span style={{ opacity: .7 }}>({orders.filter(o => o.status === f).length})</span>}
+          </button>
+        ))}
+      </div>
+
+      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+          <thead>
+            <tr style={{ borderBottom: '1px solid var(--border)', background: 'rgba(255,255,255,0.02)' }}>
+              {['Orden', 'Cliente', 'Productos', 'Total', 'Tu ganancia', 'Pago', 'Estado', 'Fecha', 'Actualizar'].map(h => (
+                <th key={h} style={{ textAlign: 'left', padding: '13px 14px', color: 'var(--text3)', fontSize: 11, textTransform: 'uppercase', fontWeight: 600 }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.map(o => (
+              <tr key={o.id} style={{ borderBottom: '1px solid rgba(30,45,71,.4)' }}>
+                <td style={{ padding: '12px 14px', fontWeight: 800, color: 'var(--accent)', fontFamily: 'monospace', fontSize: 12 }}>{o.order_number}</td>
+                <td style={{ padding: '12px 14px' }}>
+                  <div style={{ fontWeight: 600 }}>{o.customer_name}</div>
+                  <div style={{ fontSize: 11, color: 'var(--text2)' }}>{o.customer_email}</div>
+                </td>
+                <td style={{ padding: '12px 14px', color: 'var(--text2)', fontSize: 12 }}>{Array.isArray(o.items) ? o.items.length : 0} artículo(s)</td>
+                <td style={{ padding: '12px 14px', fontWeight: 800, fontSize: 15 }}>${o.total.toLocaleString()}</td>
+                <td style={{ padding: '12px 14px' }}><span style={{ background: 'rgba(16,185,129,.12)', color: 'var(--accent3)', padding: '3px 10px', borderRadius: 20, fontWeight: 700 }}>${o.commission.toLocaleString()}</span></td>
+                <td style={{ padding: '12px 14px' }}><PayBadge status={o.payment_status} /></td>
+                <td style={{ padding: '12px 14px' }}><StatusBadge status={o.status} /></td>
+                <td style={{ padding: '12px 14px', color: 'var(--text3)', fontSize: 12 }}>{new Date(o.created_at).toLocaleDateString('es-MX')}</td>
+                <td style={{ padding: '12px 14px' }}>
+                  <select value={o.status} onChange={e => updateStatus(o.id, e.target.value)} style={{ background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 6, padding: '5px 8px', color: 'var(--text)', fontSize: 12, cursor: 'pointer', outline: 'none' }}>
+                    {['pendiente','confirmado','enviado','entregado','cancelado'].map(s => <option key={s}>{s}</option>)}
+                  </select>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {filtered.length === 0 && (
+          <div style={{ textAlign: 'center', padding: '48px', color: 'var(--text3)' }}>
+            <div style={{ fontSize: 40, marginBottom: 12 }}>🛒</div>
+            <div style={{ fontSize: 16, fontWeight: 600 }}>Sin pedidos {filter !== 'todos' ? `con estado "${filter}"` : 'aún'}</div>
+            <div style={{ fontSize: 13, marginTop: 6 }}>Comparte tu tienda para empezar a recibir pedidos</div>
+          </div>
+        )}
       </div>
     </div>
   )
@@ -366,23 +556,23 @@ function AdminOrders({ orders, onRefresh }: { orders: Order[]; onRefresh: () => 
 
 function StatusBadge({ status }: { status: string }) {
   const map: Record<string, { color: string; bg: string }> = {
-    pendiente: { color: '#f59e0b', bg: 'rgba(245,158,11,.1)' },
-    confirmado: { color: '#00d4ff', bg: 'rgba(0,212,255,.1)' },
-    enviado: { color: '#7c3aed', bg: 'rgba(124,58,237,.1)' },
-    entregado: { color: '#10b981', bg: 'rgba(16,185,129,.1)' },
-    cancelado: { color: '#ef4444', bg: 'rgba(239,68,68,.1)' },
+    pendiente: { color: '#f59e0b', bg: 'rgba(245,158,11,.12)' },
+    confirmado: { color: '#00d4ff', bg: 'rgba(0,212,255,.12)' },
+    enviado: { color: '#7c3aed', bg: 'rgba(124,58,237,.12)' },
+    entregado: { color: '#10b981', bg: 'rgba(16,185,129,.12)' },
+    cancelado: { color: '#ef4444', bg: 'rgba(239,68,68,.12)' },
   }
   const s = map[status] || map.pendiente
-  return <span style={{ background: s.bg, color: s.color, padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 600 }}>{status}</span>
+  return <span style={{ background: s.bg, color: s.color, padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700 }}>{status}</span>
 }
 
 function PayBadge({ status }: { status: string }) {
   const map: Record<string, { color: string; bg: string }> = {
-    pendiente: { color: '#f59e0b', bg: 'rgba(245,158,11,.1)' },
-    pagado: { color: '#10b981', bg: 'rgba(16,185,129,.1)' },
-    fallido: { color: '#ef4444', bg: 'rgba(239,68,68,.1)' },
-    reembolsado: { color: '#94a3b8', bg: 'rgba(148,163,184,.1)' },
+    pendiente: { color: '#f59e0b', bg: 'rgba(245,158,11,.12)' },
+    pagado: { color: '#10b981', bg: 'rgba(16,185,129,.12)' },
+    fallido: { color: '#ef4444', bg: 'rgba(239,68,68,.12)' },
+    reembolsado: { color: '#94a3b8', bg: 'rgba(148,163,184,.12)' },
   }
   const s = map[status] || map.pendiente
-  return <span style={{ background: s.bg, color: s.color, padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 600 }}>{status}</span>
+  return <span style={{ background: s.bg, color: s.color, padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700 }}>{status}</span>
 }
