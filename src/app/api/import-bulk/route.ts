@@ -1,21 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
-import Groq from 'groq-sdk'
-
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY })
+import { groqChat } from '@/lib/groq'
 
 // ─── Generate description with Groq ───────────────────────────────────────────
 async function generateDesc(name: string, price: number, source: string): Promise<string> {
   try {
-    const res = await groq.chat.completions.create({
-      model: 'llama-3.3-70b-versatile',
-      max_tokens: 120,
-      messages: [
-        { role: 'system', content: 'Eres experto en ecommerce mexicano. Escribe descripciones de productos atractivas en español. Máximo 80 palabras. Solo párrafo, sin listas.' },
-        { role: 'user', content: `Descripción para: "${name}". Precio: $${price} MXN. Fuente: ${source}.` },
-      ],
-    })
-    return res.choices[0]?.message?.content?.trim() || `${name} — excelente calidad al mejor precio.`
+    const desc = await groqChat([
+      { role: 'system', content: 'Eres experto en ecommerce mexicano. Escribe descripciones de productos atractivas en español. Máximo 80 palabras. Solo párrafo, sin listas.' },
+      { role: 'user', content: `Descripción para: "${name}". Precio: $${price} MXN. Fuente: ${source}.` },
+    ])
+    return desc || `${name} — excelente calidad al mejor precio.`
   } catch {
     return `${name} — excelente calidad al mejor precio. ¡Envío rápido a toda la República Mexicana!`
   }
