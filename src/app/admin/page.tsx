@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react'
 import type { Product, Order } from '@/lib/supabase'
 
-type Tab = 'dashboard' | 'productos' | 'importar' | 'pedidos'
+type Tab = 'dashboard' | 'productos' | 'importar' | 'importar-masivo' | 'pedidos'
 
 export default function AdminPage() {
   const [tab, setTab] = useState<Tab>('dashboard')
@@ -28,6 +28,7 @@ export default function AdminPage() {
     { id: 'dashboard', icon: '📊', label: 'Dashboard' },
     { id: 'importar', icon: '🔗', label: 'Importar', badge: '¡Nuevo!' },
     { id: 'productos', icon: '📦', label: 'Productos', badge: products.length || undefined },
+    { id: 'importar-masivo', icon: '📥', label: 'Importar masivo', badge: '¡Nuevo!' },
     { id: 'pedidos', icon: '🛒', label: 'Pedidos', badge: pendingOrders || undefined },
   ] as { id: Tab; icon: string; label: string; badge?: any }[]
 
@@ -67,6 +68,7 @@ export default function AdminPage() {
         {tab === 'dashboard' && <AdminDashboard products={products} orders={orders} totalRevenue={totalRevenue} totalCommission={totalCommission} />}
         {tab === 'importar' && <AdminImporter onRefresh={loadAll} onGoProducts={() => setTab('productos')} />}
         {tab === 'productos' && <AdminProducts products={products} onRefresh={loadAll} />}
+        {tab === 'importar-masivo' && <AdminBulkImporter onRefresh={loadAll} onGoProducts={() => setTab('productos')} />}
         {tab === 'pedidos' && <AdminOrders orders={orders} onRefresh={loadAll} />}
       </main>
     </div>
@@ -567,6 +569,220 @@ function AdminOrders({ orders, onRefresh }: { orders: Order[]; onRefresh: () => 
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+
+// ══════════════════════════════════════════
+// IMPORTADOR MASIVO
+// ══════════════════════════════════════════
+function AdminBulkImporter({ onRefresh, onGoProducts }: { onRefresh: () => void; onGoProducts: () => void }) {
+  const [url, setUrl] = useState('')
+  const [limit, setLimit] = useState(20)
+  const [margin, setMargin] = useState(20)
+  const [loading, setLoading] = useState(false)
+  const [progress, setProgress] = useState('')
+  const [result, setResult] = useState<any>(null)
+  const [error, setError] = useState('')
+
+  const examples = [
+    { label: 'Bocinas bluetooth ML', url: 'https://listado.mercadolibre.com.mx/bocinas-bluetooth' },
+    { label: 'Auriculares ML', url: 'https://listado.mercadolibre.com.mx/auriculares-bluetooth' },
+    { label: 'Smartwatch ML', url: 'https://listado.mercadolibre.com.mx/smartwatch' },
+    { label: 'Ropa deportiva ML', url: 'https://listado.mercadolibre.com.mx/ropa-deportiva' },
+    { label: 'Cocina y hogar ML', url: 'https://listado.mercadolibre.com.mx/cocina' },
+  ]
+
+  const run = async () => {
+    if (!url.trim()) return
+    setLoading(true)
+    setError('')
+    setResult(null)
+    setProgress('Conectando con la tienda...')
+    await new Promise(r => setTimeout(r, 800))
+    setProgress(`Extrayendo hasta ${limit} productos...`)
+    try {
+      const res = await fetch('/api/import-bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: url.trim(), limit, margin }),
+      })
+      const data = await res.json()
+      if (data.error) { setError(data.error); setLoading(false); setProgress(''); return }
+      setProgress('Guardando en tu tienda...')
+      await new Promise(r => setTimeout(r, 400))
+      setResult(data)
+      onRefresh()
+    } catch (e: any) {
+      setError('Error de conexión')
+    }
+    setLoading(false)
+    setProgress('')
+  }
+
+  return (
+    <div className="fade-in">
+      <h1 style={{ fontFamily: 'Syne, sans-serif', fontSize: 26, fontWeight: 800, marginBottom: 8 }}>Importar productos en masa</h1>
+      <p style={{ color: 'var(--text2)', fontSize: 14, marginBottom: 28 }}>Pega la URL de una <strong>categoría o búsqueda</strong> e importamos todos los productos de una vez</p>
+
+      {/* DIFERENCIA CLAVE */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 24 }}>
+        <div className="card" style={{ borderLeft: '3px solid var(--text3)', padding: '14px 18px' }}>
+          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6, color: 'var(--text2)' }}>Importar individual (anterior)</div>
+          <div style={{ fontSize: 12, color: 'var(--text3)' }}>URL de 1 producto → 1 artículo importado</div>
+          <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 4 }}>Ej: mercadolibre.com.mx/auricular-jbl/MLM123</div>
+        </div>
+        <div className="card" style={{ borderLeft: '3px solid var(--accent)', padding: '14px 18px' }}>
+          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6, color: 'var(--accent)' }}>Importar masivo (este)</div>
+          <div style={{ fontSize: 12, color: 'var(--text2)' }}>URL de categoría → hasta 50 artículos a la vez</div>
+          <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 4 }}>Ej: listado.mercadolibre.com.mx/bocinas-bluetooth</div>
+        </div>
+      </div>
+
+      {/* EJEMPLOS RÁPIDOS */}
+      <div style={{ marginBottom: 20 }}>
+        <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 8, fontWeight: 600 }}>⚡ EJEMPLOS — clic para usar:</div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {examples.map(ex => (
+            <button key={ex.label} onClick={() => setUrl(ex.url)}
+              style={{ background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 20, padding: '5px 14px', fontSize: 12, color: 'var(--text2)', cursor: 'pointer', transition: 'all .15s' }}
+              onMouseEnter={e => { (e.target as HTMLElement).style.borderColor = 'var(--accent)'; (e.target as HTMLElement).style.color = 'var(--accent)' }}
+              onMouseLeave={e => { (e.target as HTMLElement).style.borderColor = 'var(--border)'; (e.target as HTMLElement).style.color = 'var(--text2)' }}>
+              {ex.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="card" style={{ marginBottom: 20 }}>
+        <label className="label">URL de categoría o búsqueda</label>
+        <input className="input" value={url} onChange={e => setUrl(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && run()}
+          placeholder="https://listado.mercadolibre.com.mx/bocinas-bluetooth"
+          style={{ marginBottom: 16, fontSize: 13 }} />
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+          <div>
+            <label className="label">Cantidad de productos a importar</label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <input type="range" min={5} max={50} step={5} value={limit} onChange={e => setLimit(Number(e.target.value))}
+                style={{ flex: 1, accentColor: 'var(--accent)' }} />
+              <span style={{ fontSize: 18, fontWeight: 800, color: 'var(--accent)', minWidth: 32, textAlign: 'right' }}>{limit}</span>
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>Máximo 50 productos por importación</div>
+          </div>
+          <div>
+            <label className="label">Margen de ganancia</label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <input type="range" min={5} max={60} step={5} value={margin} onChange={e => setMargin(Number(e.target.value))}
+                style={{ flex: 1, accentColor: 'var(--accent3)' }} />
+              <span style={{ fontSize: 18, fontWeight: 800, color: 'var(--accent3)', minWidth: 40, textAlign: 'right' }}>+{margin}%</span>
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>Se aplica a todos los productos importados</div>
+          </div>
+        </div>
+
+        <button onClick={run} disabled={loading || !url.trim()} className="btn-primary"
+          style={{ width: '100%', padding: '13px', fontSize: 15, fontWeight: 800 }}>
+          {loading ? `⏳ ${progress}` : `📥 Importar ${limit} productos en masa`}
+        </button>
+      </div>
+
+      {/* ERROR */}
+      {error && (
+        <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 10, padding: '14px 18px', marginBottom: 20, color: 'var(--red)', fontSize: 14 }}>
+          ⚠️ {error}
+        </div>
+      )}
+
+      {/* LOADING */}
+      {loading && (
+        <div className="card" style={{ textAlign: 'center', padding: 40 }}>
+          <div style={{ fontSize: 48, marginBottom: 12 }}>🤖</div>
+          <div style={{ fontFamily: 'Syne, sans-serif', fontSize: 18, fontWeight: 700, marginBottom: 8 }}>{progress}</div>
+          <div style={{ color: 'var(--text2)', fontSize: 13 }}>La IA está generando descripciones para cada producto — puede tomar 30-60 segundos</div>
+          <div style={{ marginTop: 20, height: 4, background: 'var(--bg3)', borderRadius: 4, overflow: 'hidden' }}>
+            <div style={{ height: '100%', background: 'linear-gradient(90deg,var(--accent),var(--accent2))', borderRadius: 4, width: '70%', animation: 'pulse 1.5s ease-in-out infinite' }} />
+          </div>
+        </div>
+      )}
+
+      {/* RESULTADO */}
+      {result && !loading && (
+        <div>
+          <div style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: 14, padding: 20, marginBottom: 20 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+              <span style={{ fontSize: 32 }}>🎉</span>
+              <div>
+                <div style={{ fontFamily: 'Syne, sans-serif', fontSize: 18, fontWeight: 800, color: 'var(--accent3)' }}>¡Importación completada!</div>
+                <div style={{ fontSize: 13, color: 'var(--text2)' }}>Fuente: {result.source}</div>
+              </div>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12, marginBottom: 16 }}>
+              {[
+                { icon: '🔍', val: result.total_found, label: 'Encontrados' },
+                { icon: '✅', val: result.inserted, label: 'Importados', color: 'var(--accent3)' },
+                { icon: '⏭️', val: result.skipped, label: 'Ya existían' },
+                { icon: '⚠️', val: result.errors, label: 'Con error' },
+              ].map(s => (
+                <div key={s.label} style={{ background: 'var(--bg3)', borderRadius: 10, padding: '12px', textAlign: 'center' }}>
+                  <div style={{ fontSize: 22 }}>{s.icon}</div>
+                  <div style={{ fontFamily: 'Syne, sans-serif', fontSize: 22, fontWeight: 800, color: s.color || 'var(--text)' }}>{s.val}</div>
+                  <div style={{ fontSize: 11, color: 'var(--text3)' }}>{s.label}</div>
+                </div>
+              ))}
+            </div>
+            {result.inserted > 0 && (
+              <div>
+                <div style={{ fontSize: 13, color: 'var(--text2)', marginBottom: 10, fontWeight: 600 }}>Vista previa de los primeros importados:</div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 8, marginBottom: 16 }}>
+                  {result.products?.slice(0, 5).map((p: any) => (
+                    <div key={p.id} style={{ background: 'var(--bg3)', borderRadius: 8, overflow: 'hidden', border: '1px solid var(--border)' }}>
+                      <div style={{ height: 70, background: 'var(--bg2)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                        {p.images?.[0] ? <img src={p.images[0]} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="" /> : <span style={{ fontSize: 24 }}>📦</span>}
+                      </div>
+                      <div style={{ padding: '6px 8px' }}>
+                        <div style={{ fontSize: 10, color: 'var(--text2)', lineHeight: 1.3, marginBottom: 3 }}>{p.name?.slice(0, 35)}...</div>
+                        <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--accent)' }}>${p.price?.toLocaleString()}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <button onClick={onGoProducts} className="btn-primary" style={{ padding: '9px 20px', fontSize: 13 }}>Ver todos mis productos →</button>
+                  <button onClick={() => { setResult(null); setUrl('') }} className="btn-ghost" style={{ padding: '9px 20px', fontSize: 13 }}>Importar otra categoría</button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* INSTRUCCIONES */}
+      {!result && !loading && (
+        <div className="card">
+          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 12 }}>📖 ¿Cómo obtener la URL de una categoría?</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--accent)', marginBottom: 6 }}>MercadoLibre ✅ (recomendado)</div>
+              {['Ve a mercadolibre.com.mx', 'Busca una categoría: "bocinas bluetooth"', 'Copia la URL de los resultados', 'Ej: listado.mercadolibre.com.mx/bocinas-bluetooth'].map((s, i) => (
+                <div key={i} style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 4, display: 'flex', gap: 6 }}>
+                  <span style={{ color: 'var(--accent)', fontWeight: 700 }}>{i+1}.</span> {s}
+                </div>
+              ))}
+            </div>
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: '#f59e0b', marginBottom: 6 }}>Amazon / AliExpress ⚠️ (limitado)</div>
+              {['Busca una categoría en Amazon MX o AliExpress', 'Copia la URL de resultados', 'Nota: se buscan productos equivalentes en ML', 'Las fotos pueden variar'].map((s, i) => (
+                <div key={i} style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 4, display: 'flex', gap: 6 }}>
+                  <span style={{ color: '#f59e0b', fontWeight: 700 }}>{i+1}.</span> {s}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
