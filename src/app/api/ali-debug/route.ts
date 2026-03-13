@@ -5,27 +5,21 @@ export async function GET(req: NextRequest) {
   const itemId = searchParams.get('id') || '1005007476838122'
   const apiKey = process.env.RAPIDAPI_KEY!
 
-  const endpoints = [
-    'item_detail_2',
-    'item_detail',
-    'item_detail_6',
-  ]
+  const res = await fetch(
+    `https://aliexpress-datahub.p.rapidapi.com/item_detail_2?itemId=${itemId}&currency=MXN&locale=es_MX`,
+    { headers: { 'X-RapidAPI-Key': apiKey, 'X-RapidAPI-Host': 'aliexpress-datahub.p.rapidapi.com' }, cache: 'no-store' }
+  )
+  const data = await res.json()
+  const item = data?.result?.item || {}
+  const sku = item?.sku || {}
 
-  const results: any = {}
-
-  for (const ep of endpoints) {
-    try {
-      const res = await fetch(
-        `https://aliexpress-datahub.p.rapidapi.com/${ep}?itemId=${itemId}&currency=MXN&locale=es_MX`,
-        { headers: { 'X-RapidAPI-Key': apiKey, 'X-RapidAPI-Host': 'aliexpress-datahub.p.rapidapi.com' }, cache: 'no-store' }
-      )
-      const data = await res.json()
-      const sample = JSON.stringify(data).slice(0, 2000)
-      results[ep] = { status: res.status, sample }
-    } catch (e: any) {
-      results[ep] = { error: e.message }
-    }
-  }
-
-  return NextResponse.json(results)
+  return NextResponse.json({
+    sku_keys: Object.keys(sku),
+    sku_def: sku?.def || {},
+    sku_base: Array.isArray(sku?.base) ? sku.base.slice(0,2) : sku?.base,
+    sku_props: sku?.props || [],
+    item_price_fields: Object.fromEntries(
+      Object.entries(item).filter(([k]) => k.toLowerCase().includes('price') || k.toLowerCase().includes('sale'))
+    )
+  })
 }
