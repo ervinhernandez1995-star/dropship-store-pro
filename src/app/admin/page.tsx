@@ -187,7 +187,7 @@ function AdminImporter({ onRefresh, onGoProducts }: { onRefresh: () => void; onG
         let realItemId = itemId
         if (url.includes('/p/MLM')) {
           try {
-            const pageRes = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent('https://api.mercadolibre.com/products/' + itemId + '/items?limit=1')}`)
+            const pageRes = await fetch(`/api/ml-proxy?path=${encodeURIComponent('/products/' + itemId + '/items?limit=1')}`)
             if (pageRes.ok) {
               const pageData = await pageRes.json()
               if (pageData.results?.[0]?.id) realItemId = pageData.results[0].id
@@ -195,7 +195,7 @@ function AdminImporter({ onRefresh, onGoProducts }: { onRefresh: () => void; onG
           } catch { /* use itemId directly */ }
         }
 
-        const mlRes = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent('https://api.mercadolibre.com/items/' + realItemId)}`)
+        const mlRes = await fetch(`/api/ml-proxy?path=${encodeURIComponent('/items/' + realItemId)}`)
         if (!mlRes.ok) throw new Error(`No se pudo obtener el producto (${mlRes.status}). Verifica la URL.`)
         const d = await mlRes.json()
 
@@ -727,8 +727,8 @@ function AdminBulkImporter({ onRefresh, onGoProducts }: { onRefresh: () => void;
         }
         setProgress(`🔍 Buscando "${searchQuery}" en MercadoLibre...`)
         // Fetch directly from browser — bypasses Vercel IP block!
-        const q = encodeURIComponent('https://api.mercadolibre.com/sites/MLM/search?q=' + encodeURIComponent(searchQuery) + '&limit=' + Math.min(limit, 48) + '&condition=new')
-        const mlRes = await fetch(`https://api.allorigins.win/raw?url=${q}`)
+        const q = encodeURIComponent('/sites/MLM/search?q=' + encodeURIComponent(searchQuery) + '&limit=' + Math.min(limit, 48) + '&condition=new')
+        const mlRes = await fetch(`/api/ml-proxy?path=${q}`)
         if (!mlRes.ok) throw new Error(`Error ${mlRes.status} al consultar MercadoLibre`)
         const mlData = await mlRes.json()
         rawProducts = mlData.results || []
@@ -737,8 +737,8 @@ function AdminBulkImporter({ onRefresh, onGoProducts }: { onRefresh: () => void;
         const kMatch = url.match(/[?&]k=([^&]+)/)
         searchQuery = kMatch ? decodeURIComponent(kMatch[1].replace(/\+/g, ' ')) : 'productos electronicos'
         setProgress(`🔍 Buscando "${searchQuery}" en MercadoLibre...`)
-        const qamazon = encodeURIComponent('https://api.mercadolibre.com/sites/MLM/search?q=' + encodeURIComponent(searchQuery) + '&limit=' + Math.min(limit, 48))
-        const mlRes = await fetch(`https://api.allorigins.win/raw?url=${qamazon}`)
+        const qamazon = encodeURIComponent('/sites/MLM/search?q=' + encodeURIComponent(searchQuery) + '&limit=' + Math.min(limit, 48))
+        const mlRes = await fetch(`/api/ml-proxy?path=${qamazon}`)
         if (!mlRes.ok) throw new Error(`Error ${mlRes.status} al consultar MercadoLibre`)
         const mlData = await mlRes.json()
         rawProducts = mlData.results || []
@@ -748,8 +748,8 @@ function AdminBulkImporter({ onRefresh, onGoProducts }: { onRefresh: () => void;
         const path = decoded.split('/').find((s: string) => s.length > 15 && s.includes('-')) || ''
         searchQuery = path.replace(/-/g, ' ').slice(0, 60) || 'productos'
         setProgress(`🔍 Buscando "${searchQuery}"...`)
-        const qali = encodeURIComponent('https://api.mercadolibre.com/sites/MLM/search?q=' + encodeURIComponent(searchQuery) + '&limit=' + Math.min(limit, 48))
-        const mlRes = await fetch(`https://api.allorigins.win/raw?url=${qali}`)
+        const qali = encodeURIComponent('/sites/MLM/search?q=' + encodeURIComponent(searchQuery) + '&limit=' + Math.min(limit, 48))
+        const mlRes = await fetch(`/api/ml-proxy?path=${qali}`)
         if (!mlRes.ok) throw new Error(`Error ${mlRes.status} al consultar MercadoLibre`)
         const mlData = await mlRes.json()
         rawProducts = mlData.results || []
