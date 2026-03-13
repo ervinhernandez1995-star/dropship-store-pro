@@ -1,8 +1,8 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
-export const dynamic = "force-dynamic"
-export default function CheckoutPage() {
+
+function CheckoutContent() {
   const searchParams = useSearchParams()
   const cancelled = searchParams.get('cancelled')
   const [cartData, setCartData] = useState<any[]>([])
@@ -105,5 +105,13 @@ export default function CheckoutPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+export default function CheckoutPage() {
+  return (
+    <Suspense fallback={<div style={{ minHeight: '100vh', background: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text2)', fontSize: 18 }}>Cargando checkout...</div>}>
+      <CheckoutContent />
+    </Suspense>
   )
 }
