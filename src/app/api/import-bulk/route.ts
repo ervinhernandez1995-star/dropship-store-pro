@@ -20,7 +20,7 @@ function detectCategory(catId: string): string {
   const map: Record<string, string> = {
     MLM1648: 'Electrónica', MLM1276: 'Electrónica', MLM1051: 'Electrónica',
     MLM1430: 'Hogar', MLM1574: 'Hogar', MLM1499: 'Hogar',
-    MLM1168: 'Deportes', MLM1276: 'Deportes',
+    MLM1168: 'Deportes', MLM1169: 'Deportes',
     MLM1182: 'Moda', MLM1185: 'Moda',
     MLM1246: 'Belleza', MLM1132: 'Automotriz',
     MLM1367: 'Juguetes',
