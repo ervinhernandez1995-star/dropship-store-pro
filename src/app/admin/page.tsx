@@ -681,14 +681,24 @@ function AdminOrders({ orders, onRefresh }: { orders: Order[]; onRefresh: () => 
                     <select value={o.status} onChange={e => updateStatus(o.id, e.target.value)} style={{ background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 6, padding: '5px 8px', color: 'var(--text)', fontSize: 12, cursor: 'pointer', outline: 'none' }}>
                       {['pendiente','confirmado','enviado','entregado','cancelado'].map(s => <option key={s}>{s}</option>)}
                     </select>
-                    {Array.isArray(o.items) && o.items.map((item: any, idx: number) => (
-                      item.source_url?.includes('mercadolibre') ? (
+                    {Array.isArray(o.items) && o.items.map((item: any, idx: number) => {
+                      if (!item.source_url) return null
+                      const isAli = item.source_url.includes('aliexpress')
+                      const isML = item.source_url.includes('mercadolibre')
+                      return (
                         <a key={idx} href={item.source_url} target="_blank" rel="noopener noreferrer"
-                          style={{ display:'flex', alignItems:'center', gap:4, background:'rgba(255,230,0,0.1)', border:'1px solid rgba(255,230,0,0.3)', borderRadius:6, padding:'4px 8px', fontSize:11, color:'#f59e0b', textDecoration:'none', fontWeight:700, whiteSpace:'nowrap' }}>
-                          🛒 Pedir en ML
+                          style={{ display:'flex', alignItems:'center', gap:4,
+                            background: isAli ? 'rgba(245,158,11,0.1)' : 'rgba(255,230,0,0.1)',
+                            border: isAli ? '1px solid rgba(245,158,11,0.4)' : '1px solid rgba(255,230,0,0.3)',
+                            borderRadius:6, padding:'4px 8px', fontSize:11, color:'#f59e0b',
+                            textDecoration:'none', fontWeight:700, whiteSpace:'nowrap' }}>
+                          {isAli ? '🛒 Pedir en AliExpress' : isML ? '🛒 Pedir en ML' : '🔗 Ver fuente'}
                         </a>
-                      ) : null
-                    ))}
+                      )
+                    })}
+                    {o.payment_status === 'pagado' && o.status === 'confirmado' && (
+                      <span style={{ fontSize: 10, color: '#10b981', fontWeight: 700 }}>⚡ Listo para procesar</span>
+                    )}
                   </div>
                 </td>
               </tr>
@@ -746,7 +756,7 @@ function AdminBulkImporter({ onRefresh, onGoProducts }: { onRefresh: () => void;
 
     const isMercadoLibre = url.includes('mercadolibre')
     const isAmazon = url.includes('amazon')
-    const isAliExpress = url.includes('aliexpress')
+    const isAliExpress = url.includes('aliexpress') || !url.startsWith('http')
 
     try {
       let rawProducts: any[] = []
@@ -784,12 +794,17 @@ function AdminBulkImporter({ onRefresh, onGoProducts }: { onRefresh: () => void;
         rawProducts = mlData.results || []
         sourceName = 'Amazon'
       } else if (isAliExpress) {
-        // Extract search keywords from AliExpress URL
-        const qMatch = url.match(/[?&](?:SearchText|search_text|q|keyword)=([^&]+)/i)
-        const pathKeyword = url.split('/').find((s: string) => s.length > 15 && s.includes('-') && !s.includes('.')) || ''
-        searchQuery = qMatch
-          ? decodeURIComponent(qMatch[1].replace(/\+/g, ' '))
-          : pathKeyword.replace(/-/g, ' ').slice(0, 60) || 'productos'
+        // Extract search keywords from AliExpress URL or use raw text
+        if (!url.startsWith('http')) {
+          // Plain keyword input — use directly
+          searchQuery = url.trim().slice(0, 80)
+        } else {
+          const qMatch = url.match(/[?&](?:SearchText|search_text|q|keyword)=([^&]+)/i)
+          const pathKeyword = url.split('/').find((s: string) => s.length > 15 && s.includes('-') && !s.includes('.')) || ''
+          searchQuery = qMatch
+            ? decodeURIComponent(qMatch[1].replace(/\+/g, ' '))
+            : pathKeyword.replace(/-/g, ' ').slice(0, 60) || 'productos'
+        }
         sourceName = 'AliExpress'
         setProgress(`🔍 Buscando "${searchQuery}" en AliExpress...`)
 
@@ -864,12 +879,12 @@ function AdminBulkImporter({ onRefresh, onGoProducts }: { onRefresh: () => void;
         <div className="card" style={{ borderLeft: '3px solid var(--text3)', padding: '14px 18px' }}>
           <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6, color: 'var(--text2)' }}>Importar individual (anterior)</div>
           <div style={{ fontSize: 12, color: 'var(--text3)' }}>URL de 1 producto → 1 artículo importado</div>
-          <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 4 }}>Ej: mercadolibre.com.mx/auricular-jbl/MLM123</div>
+          <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 4 }}>Ej: aliexpress.com/item/1005007476838122.html</div>
         </div>
         <div className="card" style={{ borderLeft: '3px solid var(--accent)', padding: '14px 18px' }}>
           <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6, color: 'var(--accent)' }}>Importar masivo (este)</div>
           <div style={{ fontSize: 12, color: 'var(--text2)' }}>URL de categoría → hasta 50 artículos a la vez</div>
-          <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 4 }}>Ej: listado.mercadolibre.com.mx/bocinas-bluetooth</div>
+          <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 4 }}>Ej: aliexpress.com/wholesale?SearchText=bocinas</div>
         </div>
       </div>
 
@@ -892,7 +907,7 @@ function AdminBulkImporter({ onRefresh, onGoProducts }: { onRefresh: () => void;
         <label className="label">URL de categoría o búsqueda</label>
         <input className="input" value={url} onChange={e => setUrl(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && run()}
-          placeholder="https://listado.mercadolibre.com.mx/bocinas-bluetooth"
+          placeholder="https://www.aliexpress.com/wholesale?SearchText=bocinas+bluetooth — o escribe palabras clave directamente"
           style={{ marginBottom: 16, fontSize: 13 }} />
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
@@ -998,18 +1013,28 @@ function AdminBulkImporter({ onRefresh, onGoProducts }: { onRefresh: () => void;
           <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 12 }}>📖 ¿Cómo obtener la URL de una categoría?</div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
             <div>
-              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--accent)', marginBottom: 6 }}>MercadoLibre ✅ (recomendado)</div>
-              {['Ve a mercadolibre.com.mx', 'Busca una categoría: "bocinas bluetooth"', 'Copia la URL de los resultados', 'Ej: listado.mercadolibre.com.mx/bocinas-bluetooth'].map((s, i) => (
+              <div style={{ fontSize: 12, fontWeight: 700, color: '#f59e0b', marginBottom: 6 }}>🛒 AliExpress ✅ (recomendado)</div>
+              {[
+                'Ve a aliexpress.com',
+                'Busca una categoría: "bocinas bluetooth"',
+                'Copia la URL de los resultados',
+                'Ej: aliexpress.com/wholesale?SearchText=bocinas+bluetooth'
+              ].map((s, i) => (
                 <div key={i} style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 4, display: 'flex', gap: 6 }}>
-                  <span style={{ color: 'var(--accent)', fontWeight: 700 }}>{i+1}.</span> {s}
+                  <span style={{ color: '#f59e0b', fontWeight: 700 }}>{i+1}.</span> {s}
                 </div>
               ))}
             </div>
             <div>
-              <div style={{ fontSize: 12, fontWeight: 700, color: '#f59e0b', marginBottom: 6 }}>Amazon / AliExpress ⚠️ (limitado)</div>
-              {['Busca una categoría en Amazon MX o AliExpress', 'Copia la URL de resultados', 'Nota: se buscan productos equivalentes en ML', 'Las fotos pueden variar'].map((s, i) => (
+              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--accent)', marginBottom: 6 }}>💡 También puedes escribir directamente</div>
+              {[
+                'En el campo URL escribe cualquier palabra clave',
+                'Ej: "bocinas bluetooth" o "auriculares gaming"',
+                'El sistema buscará en AliExpress automáticamente',
+                'Precios, fotos y descripción reales de cada producto'
+              ].map((s, i) => (
                 <div key={i} style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 4, display: 'flex', gap: 6 }}>
-                  <span style={{ color: '#f59e0b', fontWeight: 700 }}>{i+1}.</span> {s}
+                  <span style={{ color: 'var(--accent)', fontWeight: 700 }}>{i+1}.</span> {s}
                 </div>
               ))}
             </div>
