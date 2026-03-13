@@ -30,37 +30,68 @@ function detectCategory(catId: string): string {
 
 // ─── Import from MercadoLibre search/category ─────────────────────────────────
 async function importFromMercadoLibre(url: string, limit: number) {
-  // Extract search query or category from URL
-  // Supports: /categoria/MLM1234, /busqueda?q=..., /categoria-nombre
-  let apiUrl = ''
+  let query = ''
 
-  const catMatch = url.match(/\/c\/([A-Z0-9]+)/i) // category ID
-  const searchMatch = url.match(/[?&]q=([^&]+)/) // search param
-  const slugMatch = url.match(/mercadolibre\.com\.mx\/([^/?#]+)/) // slug
-
-  if (catMatch) {
-    apiUrl = `https://api.mercadolibre.com/sites/MLM/search?category=${catMatch[1]}&limit=${limit}`
-  } else if (searchMatch) {
-    apiUrl = `https://api.mercadolibre.com/sites/MLM/search?q=${encodeURIComponent(decodeURIComponent(searchMatch[1]))}&limit=${limit}`
-  } else if (slugMatch) {
-    // Use slug as search query
-    const query = slugMatch[1].replace(/-/g, ' ').replace(/\d+/g, '').trim()
-    apiUrl = `https://api.mercadolibre.com/sites/MLM/search?q=${encodeURIComponent(query)}&limit=${limit}`
-  } else {
-    throw new Error('No se pudo interpretar la URL de MercadoLibre')
+  // 1. ?q= param (search results page)
+  const qMatch = url.match(/[?&]q=([^&]+)/)
+  if (qMatch) {
+    query = decodeURIComponent(qMatch[1].replace(/\+/g, ' '))
   }
 
+  // 2. listado.mercadolibre.com.mx/SLUG  (most common URL format)
+  if (!query) {
+    const listadoMatch = url.match(/listado\.mercadolibre\.com\.mx\/([^?#_]+)/)
+    if (listadoMatch) {
+      query = listadoMatch[1].replace(/-/g, ' ').trim()
+    }
+  }
+
+  // 3. www.mercadolibre.com.mx/SLUG
+  if (!query) {
+    const wwwMatch = url.match(/(?:www\.)?mercadolibre\.com\.mx\/([^?#/]+)/)
+    if (wwwMatch && !wwwMatch[1].startsWith('MLM')) {
+      query = wwwMatch[1].replace(/-/g, ' ').trim()
+    }
+  }
+
+  // 4. Category ID /c/MLM1234
+  const catMatch = url.match(/\/c\/(MLM\d+)/i)
+  if (catMatch) {
+    const res = await fetch(`https://api.mercadolibre.com/sites/MLM/search?category=${catMatch[1]}&limit=${limit}`, { headers: { Accept: 'application/json' } })
+    if (res.ok) {
+      const data = await res.json()
+      const results = data.results || []
+      if (results.length > 0) return results.map((item: any) => ({
+        name: item.title, price: item.price || 0,
+        images: item.thumbnail ? [item.thumbnail.replace('http://', 'https://').replace(/-I.jpg/,'-O.jpg').replace(/-S.jpg/,'-O.jpg')] : [],
+        source_url: item.permalink, source_id: item.id,
+        stock: item.available_quantity || 10,
+        category: detectCategory(item.category_id || ''),
+      }))
+    }
+  }
+
+  if (!query) throw new Error('No se pudo interpretar la URL. Usa una URL de búsqueda como: listado.mercadolibre.com.mx/bocinas-bluetooth')
+
+  // Clean query: remove numbers-only segments, decode
+  query = query.replace(/\s+/g, ' ').trim()
+  if (query.length < 3) throw new Error('La búsqueda es muy corta. Intenta con otra URL.')
+
+  const apiUrl = `https://api.mercadolibre.com/sites/MLM/search?q=${encodeURIComponent(query)}&limit=${limit}`
   const res = await fetch(apiUrl, { headers: { Accept: 'application/json' } })
-  if (!res.ok) throw new Error('Error al consultar MercadoLibre')
+  if (!res.ok) {
+    const errText = await res.text().catch(() => '')
+    throw new Error(`MercadoLibre API error ${res.status}: ${errText.slice(0, 100)}`)
+  }
   const data = await res.json()
 
   const results = data.results || []
-  if (results.length === 0) throw new Error('No se encontraron productos en esa categoría')
+  if (results.length === 0) throw new Error(`No se encontraron productos para "${query}". Intenta con otra categoría.`)
 
   return results.map((item: any) => ({
     name: item.title,
     price: item.price || 0,
-    images: item.thumbnail ? [item.thumbnail.replace('-I.jpg', '-O.jpg').replace('http://', 'https://')] : [],
+    images: item.thumbnail ? [item.thumbnail.replace('http://', 'https://').replace(/-I.jpg/,'-O.jpg').replace(/-S.jpg/,'-O.jpg')] : [],
     source_url: item.permalink,
     source_id: item.id,
     stock: item.available_quantity || 10,
@@ -96,7 +127,7 @@ async function importFromAmazon(url: string, limit: number) {
   return (data.results || []).map((item: any) => ({
     name: item.title,
     price: item.price || 0,
-    images: item.thumbnail ? [item.thumbnail.replace('-I.jpg', '-O.jpg').replace('http://', 'https://')] : [],
+    images: item.thumbnail ? [item.thumbnail.replace('http://', 'https://').replace(/-I.jpg/,'-O.jpg').replace(/-S.jpg/,'-O.jpg')] : [],
     source_url: item.permalink,
     source_id: item.id,
     stock: 20,
@@ -118,6 +149,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'URL no reconocida. Usa MercadoLibre, Amazon o AliExpress.' }, { status: 400 })
     }
 
+    // Detect if user pasted a single product URL instead of a category
+    const isSingleProduct = url.includes('/p/MLM') || url.match(/MLM\d{8,}/) || url.includes('polycard_client') || url.includes('tracking_id')
+    if (isSingleProduct && isMercadoLibre) {
+      return NextResponse.json({ 
+        error: '⚠️ Esa es la URL de un producto individual. Para importar en masa necesitas la URL de una CATEGORÍA o BÚSQUEDA. Ejemplo: https://listado.mercadolibre.com.mx/bocinas-bluetooth — o usa los botones de ejemplo arriba.' 
+      }, { status: 400 })
+    }
+
     let rawProducts: any[] = []
     let sourceName = ''
 
@@ -136,7 +175,7 @@ export async function POST(req: NextRequest) {
       const data = await res.json()
       rawProducts = (data.results || []).map((item: any) => ({
         name: item.title, price: item.price || 0,
-        images: item.thumbnail ? [item.thumbnail.replace('-I.jpg', '-O.jpg').replace('http://', 'https://')] : [],
+        images: item.thumbnail ? [item.thumbnail.replace('http://', 'https://').replace(/-I.jpg/,'-O.jpg').replace(/-S.jpg/,'-O.jpg')] : [],
         source_url: item.permalink, source_id: item.id, stock: 25,
         category: detectCategory(item.category_id || ''),
       }))
