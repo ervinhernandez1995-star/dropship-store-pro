@@ -9,7 +9,7 @@ export async function POST(req: NextRequest) {
       .from('products').select('name, price, category, stock').eq('active', true).limit(30)
     const { data: config } = await supabaseAdmin
       .from('store_config').select('key, value')
-    const storeName = config?.find(c => c.key === 'store_name')?.value || 'DropShip Pro'
+    const storeName = config?.find(c => c.key === 'store_name')?.value || 'TodoClick MX'
     const reply = await chatWithStore(message, products || [], storeName)
     return NextResponse.json({ reply })
   } catch (e: any) {

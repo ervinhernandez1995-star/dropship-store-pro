@@ -36,8 +36,15 @@ export default function AdminPage() {
       {/* SIDEBAR */}
       <aside style={{ width: 220, background: 'var(--bg2)', borderRight: '1px solid var(--border)', position: 'fixed', height: '100vh', display: 'flex', flexDirection: 'column', zIndex: 10 }}>
         <div style={{ padding: '24px 20px', borderBottom: '1px solid var(--border)' }}>
-          <div style={{ fontFamily: 'Syne, sans-serif', fontSize: 20, fontWeight: 800, background: 'linear-gradient(135deg,#00d4ff,#7c3aed)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>DropShip Pro</div>
-          <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>Panel Admin 🔒</div>
+          <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:4 }}>
+            <div style={{ width:28, height:28, borderRadius:7, background:'#0ea5e9', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+              <svg width="16" height="16" viewBox="0 0 20 20" fill="none"><polyline points="3,10 8,15 17,5" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+            </div>
+            <div style={{ fontFamily:'Syne, sans-serif', fontWeight:800, fontSize:16, display:'flex', gap:2 }}>
+              <span style={{color:'#0ea5e9'}}>Todo</span><span style={{color:'var(--text)'}}>Click</span><span style={{color:'#f59e0b'}}>MX</span>
+            </div>
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--text3)' }}>Panel Admin 🔒</div>
         </div>
         <nav style={{ padding: '16px 8px', flex: 1 }}>
           {NAV.map(item => (
@@ -155,8 +162,8 @@ function AdminImporter({ onRefresh, onGoProducts }: { onRefresh: () => void; onG
 
   return (
     <div className="fade-in">
-      <h1 style={{ fontFamily: 'Syne, sans-serif', fontSize: 26, fontWeight: 800, marginBottom: 8 }}>Importar de MercadoLibre</h1>
-      <p style={{ color: 'var(--text2)', fontSize: 14, marginBottom: 28 }}>Pega la URL de cualquier producto y lo importamos automáticamente con fotos, descripción y precio sugerido</p>
+      <h1 style={{ fontFamily: 'Syne, sans-serif', fontSize: 26, fontWeight: 800, marginBottom: 8 }}>Importar productos</h1>
+      <p style={{ color: 'var(--text2)', fontSize: 14, marginBottom: 28 }}>Pega la URL de cualquier producto de <strong style={{color:'var(--accent)'}}>MercadoLibre</strong> o <strong style={{color:'#f59e0b'}}>AliExpress</strong> y lo importamos automáticamente</p>
 
       {/* CÓMO FUNCIONA */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 12, marginBottom: 28 }}>
@@ -183,14 +190,14 @@ function AdminImporter({ onRefresh, onGoProducts }: { onRefresh: () => void; onG
             value={url}
             onChange={e => setUrl(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && importProduct()}
-            placeholder="https://www.mercadolibre.com.mx/auriculares-bluetooth/p/MLM123456789..."
+            placeholder="https://www.mercadolibre.com.mx/producto/MLM123456789  ó  https://www.aliexpress.com/item/..."
             style={{ flex: 1, fontSize: 14 }}
           />
           <button onClick={importProduct} disabled={loading || !url.trim()} className="btn-primary" style={{ padding: '0 28px', whiteSpace: 'nowrap', minWidth: 160 }}>
             {loading ? '⏳ Importando...' : '🔗 Importar producto'}
           </button>
         </div>
-        <p style={{ fontSize: 12, color: 'var(--text3)' }}>💡 Tip: En MercadoLibre abre el producto → copia toda la URL del navegador → pégala aquí</p>
+        <p style={{ fontSize: 12, color: 'var(--text3)' }}>💡 MercadoLibre: abre el producto → copia la URL (debe tener MLM+números) · AliExpress: abre el producto → copia la URL completa</p>
       </div>
 
       {/* ERROR */}
@@ -534,9 +541,19 @@ function AdminOrders({ orders, onRefresh }: { orders: Order[]; onRefresh: () => 
                 <td style={{ padding: '12px 14px' }}><StatusBadge status={o.status} /></td>
                 <td style={{ padding: '12px 14px', color: 'var(--text3)', fontSize: 12 }}>{new Date(o.created_at).toLocaleDateString('es-MX')}</td>
                 <td style={{ padding: '12px 14px' }}>
-                  <select value={o.status} onChange={e => updateStatus(o.id, e.target.value)} style={{ background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 6, padding: '5px 8px', color: 'var(--text)', fontSize: 12, cursor: 'pointer', outline: 'none' }}>
-                    {['pendiente','confirmado','enviado','entregado','cancelado'].map(s => <option key={s}>{s}</option>)}
-                  </select>
+                  <div style={{display:'flex', flexDirection:'column', gap:5}}>
+                    <select value={o.status} onChange={e => updateStatus(o.id, e.target.value)} style={{ background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 6, padding: '5px 8px', color: 'var(--text)', fontSize: 12, cursor: 'pointer', outline: 'none' }}>
+                      {['pendiente','confirmado','enviado','entregado','cancelado'].map(s => <option key={s}>{s}</option>)}
+                    </select>
+                    {Array.isArray(o.items) && o.items.map((item: any, idx: number) => (
+                      item.source_url?.includes('mercadolibre') ? (
+                        <a key={idx} href={item.source_url} target="_blank" rel="noopener noreferrer"
+                          style={{ display:'flex', alignItems:'center', gap:4, background:'rgba(255,230,0,0.1)', border:'1px solid rgba(255,230,0,0.3)', borderRadius:6, padding:'4px 8px', fontSize:11, color:'#f59e0b', textDecoration:'none', fontWeight:700, whiteSpace:'nowrap' }}>
+                          🛒 Pedir en ML
+                        </a>
+                      ) : null
+                    ))}
+                  </div>
                 </td>
               </tr>
             ))}

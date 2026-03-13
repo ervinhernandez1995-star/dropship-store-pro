@@ -45,8 +45,15 @@ export default function TiendaPage() {
       {/* HEADER */}
       <header style={{ background: 'var(--bg2)', borderBottom: '1px solid var(--border)', position: 'sticky', top: 0, zIndex: 100 }}>
         <div style={{ maxWidth: 1200, margin: '0 auto', padding: '0 20px', height: 60, display: 'flex', alignItems: 'center', gap: 16 }}>
-          <a href="/tienda" style={{ fontFamily: 'Syne, sans-serif', fontSize: 20, fontWeight: 800, background: 'linear-gradient(135deg,#00d4ff,#7c3aed)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', textDecoration: 'none' }}>
-            DropShip Pro
+          <a href="/tienda" style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{ width: 32, height: 32, borderRadius: 8, background: '#0ea5e9', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <svg width="18" height="18" viewBox="0 0 20 20" fill="none"><polyline points="3,10 8,15 17,5" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+            </div>
+            <div style={{ fontFamily: 'Syne, sans-serif', fontWeight: 800, fontSize: 18, display: 'flex', gap: 3 }}>
+              <span style={{ color: '#0ea5e9' }}>Todo</span>
+              <span style={{ color: 'var(--text)' }}>Click</span>
+              <span style={{ color: '#f59e0b' }}>MX</span>
+            </div>
           </a>
           <div style={{ flex: 1 }} />
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 Buscar productos..." className="input" style={{ width: 240, padding: '8px 14px' }} />
@@ -69,7 +76,7 @@ export default function TiendaPage() {
       {/* HERO */}
       <section style={{ background: 'linear-gradient(135deg,#0d1321,#1a1040)', padding: '48px 20px', textAlign: 'center', borderBottom: '1px solid var(--border)' }}>
         <h1 style={{ fontFamily: 'Syne, sans-serif', fontSize: 40, fontWeight: 800, background: 'linear-gradient(135deg,#fff,#00d4ff)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', marginBottom: 12 }}>
-          Los Mejores Productos
+          Los mejores productos de México
         </h1>
         <p style={{ color: 'var(--text2)', fontSize: 16, marginBottom: 24 }}>Envío rápido a todo México 🇲🇽 · Pago 100% seguro</p>
         <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
@@ -110,8 +117,8 @@ export default function TiendaPage() {
 
       {/* FOOTER */}
       <footer style={{ background: 'var(--bg2)', borderTop: '1px solid var(--border)', padding: '32px 20px', marginTop: 40, textAlign: 'center', color: 'var(--text3)', fontSize: 13 }}>
-        <div style={{ fontFamily: 'Syne, sans-serif', fontSize: 18, fontWeight: 800, background: 'linear-gradient(135deg,#00d4ff,#7c3aed)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', marginBottom: 8 }}>DropShip Pro</div>
-        <p>© 2026 DropShip Pro · Envíos a toda la República Mexicana 🇲🇽</p>
+        <div style={{ fontFamily: 'Syne, sans-serif', fontSize: 18, fontWeight: 800, background: 'linear-gradient(135deg,#00d4ff,#7c3aed)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', marginBottom: 8 }}>TodoClick MX</div>
+        <p>© 2026 TodoClick MX · Envíos a toda la República Mexicana 🇲🇽</p>
       </footer>
 
       {/* CARRITO */}

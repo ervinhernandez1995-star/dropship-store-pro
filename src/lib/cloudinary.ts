@@ -8,7 +8,7 @@ cloudinary.config({
 
 export async function uploadImage(base64: string): Promise<string> {
   const result = await cloudinary.uploader.upload(base64, {
-    folder: 'dropship-pro/products',
+    folder: 'todoclick-mx/products',
     transformation: [{ width: 800, height: 800, crop: 'fill', quality: 'auto' }],
   })
   return result.secure_url
