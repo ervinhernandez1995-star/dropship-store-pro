@@ -3,13 +3,21 @@ import { NextRequest, NextResponse } from 'next/server'
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl
 
-  // Protect /admin route
-  if (pathname.startsWith('/admin')) {
+  if (pathname.startsWith('/admin') && !pathname.startsWith('/admin-login')) {
     const adminPassword = process.env.ADMIN_PASSWORD || 'TodoClick2024@'
     const cookie = req.cookies.get('admin_auth')?.value
-    const valid = cookie === Buffer.from(adminPassword).toString('base64')
+    
+    // Compare: cookie stores base64 of password
+    let valid = false
+    try {
+      valid = cookie === Buffer.from(adminPassword).toString('base64')
+    } catch {
+      valid = false
+    }
+    
     if (!valid) {
-      return NextResponse.redirect(new URL('/admin-login', req.url))
+      const loginUrl = new URL('/admin-login', req.url)
+      return NextResponse.redirect(loginUrl)
     }
   }
 
