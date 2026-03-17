@@ -1,3 +1,14 @@
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 200,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type',
+    },
+  })
+}
+
 import { NextRequest, NextResponse } from 'next/server'
 
 function extractAliId(url: string): string | null {
@@ -18,11 +29,11 @@ export async function GET(req: NextRequest) {
   const productId = extractAliId(url)
 
   if (!productId) {
-    return NextResponse.json({ error: 'No se encontró el ID del producto.' }, { status: 400 })
+    const _r = NextResponse.json({ error: 'No se encontró el ID del producto.' }, { status: 400 })
   }
 
   const apiKey = process.env.RAPIDAPI_KEY
-  if (!apiKey) return NextResponse.json({ error: 'RAPIDAPI_KEY no configurada' }, { status: 500 })
+  if (!apiKey) const _r = NextResponse.json({ error: 'RAPIDAPI_KEY no configurada' }, { status: 500 })
 
   // item_detail_2 and item_detail_6 both work — try in order
   const endpoints = [
@@ -90,7 +101,7 @@ export async function GET(req: NextRequest) {
         img.startsWith('//') ? 'https:' + img : img.replace('http://', 'https://')
       )
 
-      return NextResponse.json({
+      const _r = NextResponse.json({
         success: true,
         productId,
         raw: { title, price: Math.round(price * 100) / 100, currency: 'MXN', images }
@@ -99,5 +110,5 @@ export async function GET(req: NextRequest) {
     } catch (e: any) { lastError = e.message }
   }
 
-  return NextResponse.json({ error: `No se pudo obtener el producto: ${lastError}`, productId }, { status: 500 })
+  const _r = NextResponse.json({ error: `No se pudo obtener el producto: ${lastError}`, productId }, { status: 500 })
 }
