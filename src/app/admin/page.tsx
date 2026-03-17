@@ -794,9 +794,8 @@ function AdminBulkImporter({ onRefresh, onGoProducts }: { onRefresh: () => void;
         rawProducts = mlData.results || []
         sourceName = 'Amazon'
       } else if (isAliExpress) {
-        // Extract search keywords from AliExpress URL or use raw text
+        // Extract search keywords
         if (!url.startsWith('http')) {
-          // Plain keyword input — use directly
           searchQuery = url.trim().slice(0, 80)
         } else {
           const qMatch = url.match(/[?&](?:SearchText|search_text|q|keyword)=([^&]+)/i)
@@ -806,61 +805,66 @@ function AdminBulkImporter({ onRefresh, onGoProducts }: { onRefresh: () => void;
             : pathKeyword.replace(/-/g, ' ').slice(0, 60) || 'productos'
         }
         sourceName = 'AliExpress'
+
+        // BROWSER-SIDE SCRAPING via CORS proxy — browser fetches AliExpress directly
         setProgress(`🔍 Buscando "${searchQuery}" en AliExpress...`)
 
-        // Step 1: Search AliExpress via RapidAPI (404 is OK — means search API unavailable, use pool fallback)
-        const searchRes = await fetch(`/api/ali-search?q=${encodeURIComponent(searchQuery)}&limit=${Math.min(limit, 40)}`)
-        const searchData = await searchRes.json()
-        const itemIds: string[] = searchData.ids || []
+        // Use allorigins.win as CORS proxy to scrape AliExpress search page
+        const aliSearchUrl = `https://www.aliexpress.com/wholesale?SearchText=${encodeURIComponent(searchQuery)}&SortType=default_desc&page=1`
+        const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(aliSearchUrl)}`
 
-        if (itemIds.length === 0) throw new Error(searchData.error || `No se encontraron productos para "${searchQuery}"`)
+        let html = ''
+        try {
+          const proxyRes = await fetch(proxyUrl, { cache: 'no-store' })
+          const proxyData = await proxyRes.json()
+          html = proxyData.contents || ''
+        } catch {
+          throw new Error('No se pudo conectar con AliExpress. Verifica tu conexión a internet.')
+        }
 
-        setProgress(`✅ ${itemIds.length} productos encontrados. Procesando...`)
+        if (!html) throw new Error('AliExpress no respondió. Intenta de nuevo.')
 
-        // Step 2: Use previews from search if available (pool source already has full data)
-        const previews: any[] = searchData.previews || []
-        
-        if (previews.length > 0 && searchData.source === 'pool') {
-          // Pool source already fetched full product data — use directly
-          for (const p of previews.slice(0, limit)) {
-            if (p.title && p.price > 0) {
+        // Extract product IDs from the HTML
+        const idMatches: string[] = []
+        const idRe = /"productId"\s*:\s*"?(\d{13,16})"?/g
+        let m: RegExpExecArray | null
+        while ((m = idRe.exec(html)) !== null && idMatches.length < limit * 2) {
+          if (!idMatches.includes(m[1])) idMatches.push(m[1])
+        }
+        // Also try itemId format
+        const idRe2 = /"itemId"\s*:\s*"?(\d{13,16})"?/g
+        while ((m = idRe2.exec(html)) !== null && idMatches.length < limit * 2) {
+          if (!idMatches.includes(m[1])) idMatches.push(m[1])
+        }
+
+        if (idMatches.length === 0) {
+          throw new Error(`AliExpress bloqueó la búsqueda. Prueba abriendo aliexpress.com en otra pestaña primero, luego vuelve a intentar.`)
+        }
+
+        setProgress(`✅ ${idMatches.length} productos encontrados. Obteniendo detalles...`)
+
+        // Fetch details for each found product ID
+        for (let i = 0; i < Math.min(idMatches.length, limit); i++) {
+          const id = idMatches[i]
+          setProgress(`📦 Obteniendo producto ${i+1}/${Math.min(idMatches.length, limit)}...`)
+          try {
+            const detailRes = await fetch(`/api/ali-proxy?url=https://www.aliexpress.com/item/${id}.html`)
+            const detail = await detailRes.json()
+            if (detail.raw?.title && detail.raw?.price > 0) {
               rawProducts.push({
-                title: p.title,
-                price: p.price,
+                title: detail.raw.title,
+                price: detail.raw.price,
                 available_quantity: 50,
                 category_id: '',
-                permalink: `https://www.aliexpress.com/item/${p.id}.html`,
-                thumbnail: p.images?.[0] || '',
-                images: p.images || [],
+                permalink: `https://www.aliexpress.com/item/${id}.html`,
+                thumbnail: detail.raw.images?.[0] || '',
+                images: detail.raw.images || [],
                 source: 'aliexpress',
-                ali_id: p.id,
+                ali_id: id,
               })
             }
-          }
-        } else {
-          // Fetch details for each item
-          for (let i = 0; i < Math.min(itemIds.length, limit); i++) {
-            const id = itemIds[i]
-            setProgress(`📦 Obteniendo producto ${i+1}/${Math.min(itemIds.length, limit)}...`)
-            try {
-              const detailRes = await fetch(`/api/ali-proxy?url=https://www.aliexpress.com/item/${id}.html`)
-              const detail = await detailRes.json()
-              if (detail.raw?.title && detail.raw?.price > 0) {
-                rawProducts.push({
-                  title: detail.raw.title,
-                  price: detail.raw.price,
-                  available_quantity: 50,
-                  category_id: '',
-                  permalink: `https://www.aliexpress.com/item/${id}.html`,
-                  thumbnail: detail.raw.images?.[0] || '',
-                  images: detail.raw.images || [],
-                  source: 'aliexpress',
-                  ali_id: id,
-                })
-              }
-            } catch { /* skip */ }
-            await new Promise(r => setTimeout(r, 150))
-          }
+          } catch { /* skip */ }
+          await new Promise(r => setTimeout(r, 300))
         }
       } else {
         setError('URL no reconocida.'); setLoading(false); return
