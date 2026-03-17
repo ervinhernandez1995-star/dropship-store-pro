@@ -11,7 +11,10 @@ export default function TiendaPage() {
   const [loading, setLoading] = useState(true)
   const [category, setCategory] = useState('Todos')
   const [search, setSearch] = useState('')
-  const [cart, setCart] = useState<{ product: Product; quantity: number }[]>([])
+  const [cart, setCart] = useState<{ product: Product; quantity: number }[]>(() => {
+    if (typeof window === 'undefined') return []
+    try { return JSON.parse(localStorage.getItem('cart') || '[]') } catch { return [] }
+  })
   const [cartOpen, setCartOpen] = useState(false)
   const [toast, setToast] = useState('')
   const [customer, setCustomer] = useState<any>(null)
@@ -35,6 +38,26 @@ export default function TiendaPage() {
   }, [category, search])
 
   useEffect(() => { fetchProducts() }, [fetchProducts])
+
+  // Sync cart to localStorage whenever it changes
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('cart', JSON.stringify(cart))
+    }
+  }, [cart])
+
+  // Listen for cart updates from producto/[id] page
+  useEffect(() => {
+    const sync = () => {
+      try {
+        const saved = JSON.parse(localStorage.getItem('cart') || '[]')
+        setCart(saved)
+      } catch {}
+    }
+    window.addEventListener('cart-updated', sync)
+    window.addEventListener('storage', sync)
+    return () => { window.removeEventListener('cart-updated', sync); window.removeEventListener('storage', sync) }
+  }, [])
 
   useEffect(() => {
     fetch('/api/customer-auth').then(r => r.json()).then(d => {
