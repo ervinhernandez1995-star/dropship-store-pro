@@ -816,30 +816,52 @@ function AdminBulkImporter({ onRefresh, onGoProducts }: { onRefresh: () => void;
 
         if (itemIds.length === 0) throw new Error(`No se encontraron productos para "${searchQuery}" en AliExpress`)
 
-        setProgress(`✅ ${itemIds.length} productos encontrados. Obteniendo detalles...`)
+        setProgress(`✅ ${itemIds.length} productos encontrados. Procesando...`)
 
-        // Step 2: Fetch details for each item and build rawProducts array
-        for (let i = 0; i < Math.min(itemIds.length, limit); i++) {
-          const id = itemIds[i]
-          setProgress(`📦 Obteniendo producto ${i+1}/${Math.min(itemIds.length, limit)}...`)
-          try {
-            const detailRes = await fetch(`/api/ali-proxy?url=https://www.aliexpress.com/item/${id}.html`)
-            const detail = await detailRes.json()
-            if (detail.raw?.title && detail.raw?.price > 0) {
+        // Step 2: Use previews from search if available (pool source already has full data)
+        const previews: any[] = searchData.previews || []
+        
+        if (previews.length > 0 && searchData.source === 'pool') {
+          // Pool source already fetched full product data — use directly
+          for (const p of previews.slice(0, limit)) {
+            if (p.title && p.price > 0) {
               rawProducts.push({
-                title: detail.raw.title,
-                price: detail.raw.price,
+                title: p.title,
+                price: p.price,
                 available_quantity: 50,
                 category_id: '',
-                permalink: `https://www.aliexpress.com/item/${id}.html`,
-                thumbnail: detail.raw.images?.[0] || '',
-                images: detail.raw.images || [],
+                permalink: `https://www.aliexpress.com/item/${p.id}.html`,
+                thumbnail: p.images?.[0] || '',
+                images: p.images || [],
                 source: 'aliexpress',
-                ali_id: id,
+                ali_id: p.id,
               })
             }
-          } catch { /* skip failed items */ }
-          await new Promise(r => setTimeout(r, 200))
+          }
+        } else {
+          // Fetch details for each item
+          for (let i = 0; i < Math.min(itemIds.length, limit); i++) {
+            const id = itemIds[i]
+            setProgress(`📦 Obteniendo producto ${i+1}/${Math.min(itemIds.length, limit)}...`)
+            try {
+              const detailRes = await fetch(`/api/ali-proxy?url=https://www.aliexpress.com/item/${id}.html`)
+              const detail = await detailRes.json()
+              if (detail.raw?.title && detail.raw?.price > 0) {
+                rawProducts.push({
+                  title: detail.raw.title,
+                  price: detail.raw.price,
+                  available_quantity: 50,
+                  category_id: '',
+                  permalink: `https://www.aliexpress.com/item/${id}.html`,
+                  thumbnail: detail.raw.images?.[0] || '',
+                  images: detail.raw.images || [],
+                  source: 'aliexpress',
+                  ali_id: id,
+                })
+              }
+            } catch { /* skip */ }
+            await new Promise(r => setTimeout(r, 150))
+          }
         }
       } else {
         setError('URL no reconocida.'); setLoading(false); return
