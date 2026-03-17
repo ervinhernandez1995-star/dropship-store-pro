@@ -68,3 +68,30 @@ create policy "config publica" on store_config for select using (true);
 create policy "solo admin productos" on products for all using (auth.role() = 'service_role');
 create policy "solo admin pedidos" on orders for all using (auth.role() = 'service_role');
 create policy "solo admin config" on store_config for all using (auth.role() = 'service_role');
+
+-- =============================================
+-- NUEVAS TABLAS: Clientes y Wishlist
+-- EJECUTA ESTO en Supabase > SQL Editor
+-- =============================================
+
+create table if not exists customers (
+  id uuid primary key,
+  email text unique not null,
+  name text default '',
+  phone text default '',
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+create table if not exists wishlists (
+  id uuid default gen_random_uuid() primary key,
+  customer_id uuid references customers(id) on delete cascade,
+  product_id uuid references products(id) on delete cascade,
+  created_at timestamptz default now(),
+  unique(customer_id, product_id)
+);
+
+alter table customers enable row level security;
+alter table wishlists enable row level security;
+create policy "solo admin clientes" on customers for all using (auth.role() = 'service_role');
+create policy "solo admin wishlist" on wishlists for all using (auth.role() = 'service_role');
