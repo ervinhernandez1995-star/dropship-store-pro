@@ -808,13 +808,12 @@ function AdminBulkImporter({ onRefresh, onGoProducts }: { onRefresh: () => void;
         sourceName = 'AliExpress'
         setProgress(`🔍 Buscando "${searchQuery}" en AliExpress...`)
 
-        // Step 1: Search AliExpress via RapidAPI
+        // Step 1: Search AliExpress via RapidAPI (404 is OK — means search API unavailable, use pool fallback)
         const searchRes = await fetch(`/api/ali-search?q=${encodeURIComponent(searchQuery)}&limit=${Math.min(limit, 40)}`)
-        if (!searchRes.ok) throw new Error(`Error al buscar en AliExpress: ${searchRes.status}`)
         const searchData = await searchRes.json()
         const itemIds: string[] = searchData.ids || []
 
-        if (itemIds.length === 0) throw new Error(`No se encontraron productos para "${searchQuery}" en AliExpress`)
+        if (itemIds.length === 0) throw new Error(searchData.error || `No se encontraron productos para "${searchQuery}"`)
 
         setProgress(`✅ ${itemIds.length} productos encontrados. Procesando...`)
 
