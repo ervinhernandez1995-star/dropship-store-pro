@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { Stagehand } from '@browserbasehq/stagehand'
-import { z } from 'zod'
+import { chromium } from 'playwright-core'
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -24,51 +23,91 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Browserbase no configurado' }, { status: 500 })
   }
 
-  if (!groqKey) {
-    return NextResponse.json({ error: 'GROQ_API_KEY no configurada' }, { status: 500 })
-  }
-
-  const stagehand = new Stagehand({
-    env: 'BROWSERBASE' as const,
-    apiKey: bbApiKey,
-    projectId: bbProjectId,
-    // Groq is OpenAI-compatible and FREE
-    modelName: 'llama-3.3-70b-versatile' as any,
-    modelClientOptions: {
-      apiKey: groqKey,
-      baseURL: 'https://api.groq.com/openai/v1',
-    },
-    verbose: 0 as const,
-  })
-
+  let browser
   try {
-    await stagehand.init()
-    const page = stagehand.page
+    const sessionRes = await fetch('https://www.browserbase.com/v1/sessions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-BB-API-Key': bbApiKey },
+      body: JSON.stringify({ projectId: bbProjectId }),
+    })
+    const session = await sessionRes.json()
+    if (!session.id) throw new Error('No se pudo crear sesión de Browserbase')
+
+    browser = await chromium.connectOverCDP(
+      `wss://connect.browserbase.com?apiKey=${bbApiKey}&sessionId=${session.id}`
+    )
+    const context = browser.contexts()[0]
+    const page = context.pages()[0]
+
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 })
     await page.waitForTimeout(2500)
 
-    const product = await stagehand.extract({
-      instruction: 'Extract: title (full product name), price in MXN as number only (if USD convert x17.5), images array (product photos only, not banners)',
-      schema: z.object({
-        title: z.string(),
-        price: z.number(),
-        images: z.array(z.string()),
-      }),
+    // Extract product data directly from the page
+    const raw = await page.evaluate(() => {
+      // Title
+      const titleSelectors = ['h1', '[class*="product-title"]', '[class*="pdp-title"]', '[class*="title--wrap"]', '.ui-pdp-title']
+      let title = ''
+      for (const sel of titleSelectors) {
+        const el = document.querySelector(sel)
+        if (el && el.textContent && el.textContent.trim().length > 5) {
+          title = el.textContent.trim().replace(/\s+/g, ' ').slice(0, 200)
+          break
+        }
+      }
+
+      // Price
+      let price = 0
+      const bodyText = document.body.innerText || ''
+      const mxMatch = bodyText.match(/MX\$\s*([\d,]+\.?\d*)/)
+      if (mxMatch) price = parseFloat(mxMatch[1].replace(',', ''))
+
+      // Images from product gallery
+      const images: string[] = []
+      const seen = new Set<string>()
+      const gallerySels = ['[class*="image-view"] img', '[class*="slider"] img[src*="alicdn"]', '[class*="thumb"] img[src*="alicdn"]', '[class*="gallery"] img', 'img[src*="alicdn"]', 'img[src*="mlstatic"]']
+      for (const sel of gallerySels) {
+        document.querySelectorAll<HTMLImageElement>(sel).forEach(img => {
+          const s = (img.src || '').split('?')[0]
+          if (!s || seen.has(s) || s.includes('banner') || s.includes('promo')) return
+          if (img.width > 0 && img.width < 100) return
+          seen.add(s)
+          const hq = s.replace(/_\d+x\d+(\.[^.]+)$/, '$1')
+          images.push(hq.startsWith('//') ? 'https:' + hq : hq)
+        })
+        if (images.length >= 3) break
+      }
+
+      return { title, price, images: images.slice(0, 6) }
     })
 
-    await stagehand.close()
+    await browser.close()
 
-    const images = (product.images || [])
-      .filter((img: string) => img && img.length > 10)
-      .slice(0, 6)
-      .map((img: string) => img.startsWith('//') ? 'https:' + img : img)
+    // Use Groq to improve title translation if needed
+    let title = raw.title
+    if (groqKey && title && !/[áéíóúñ]/.test(title) && title.length > 10) {
+      try {
+        const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${groqKey}` },
+          body: JSON.stringify({
+            model: 'llama-3.3-70b-versatile',
+            max_tokens: 200,
+            messages: [{ role: 'user', content: `Translate this product title to Spanish (Mexico), keep it natural and commercial. Return ONLY the translated title, nothing else: "${title}"` }]
+          })
+        })
+        const gd = await groqRes.json()
+        const translated = gd.choices?.[0]?.message?.content?.trim()
+        if (translated && translated.length > 5) title = translated
+      } catch {}
+    }
 
     return NextResponse.json(
-      { success: true, raw: { title: product.title, price: product.price, images } },
+      { success: true, raw: { title, price: raw.price, images: raw.images } },
       { headers: cors }
     )
+
   } catch (e: any) {
-    try { await stagehand.close() } catch {}
+    if (browser) try { await browser.close() } catch {}
     return NextResponse.json({ error: e.message }, { status: 500, headers: cors })
   }
 }

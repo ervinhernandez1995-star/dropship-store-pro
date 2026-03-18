@@ -19,8 +19,8 @@
     "recharts": "^2.12.7",
     "lucide-react": "^0.400.0",
     "clsx": "^2.1.1",
-    "@browserbasehq/stagehand": "^1.13.0",
-    "zod": "^3.22.4"
+    "zod": "^3.22.4",
+    "playwright-core": "^1.40.0"
   },
   "devDependencies": {
     "@types/node": "^20",
