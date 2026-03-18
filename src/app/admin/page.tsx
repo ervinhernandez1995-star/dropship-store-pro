@@ -834,49 +834,51 @@ function AdminBulkImporter({ onRefresh, onGoProducts }: { onRefresh: () => void;
         rawProducts = mlData.results || []
         sourceName = 'Amazon'
       } else if (isAliExpress) {
-        // Extract search keywords
-        if (!url.startsWith('http')) {
-          searchQuery = url.trim().slice(0, 80)
-        } else {
-          const qMatch = url.match(/[?&](?:SearchText|search_text|q|keyword|q)=([^&]+)/i)
-          const pathKeyword = url.split('/').find((s: string) => s.length > 15 && s.includes('-') && !s.includes('.')) || ''
-          searchQuery = qMatch
-            ? decodeURIComponent(qMatch[1].replace(/\+/g, ' '))
-            : pathKeyword.replace(/-/g, ' ').slice(0, 60) || 'productos'
-        }
         sourceName = 'AliExpress'
-        setProgress(`🔍 Buscando "${searchQuery}" en AliExpress...`)
+        const searchUrl = url.startsWith('http') ? url : `https://www.aliexpress.com/wholesale?SearchText=${encodeURIComponent(url.trim())}`
+        setProgress(`🤖 Stagehand analizando AliExpress con IA...`)
 
-        // Use RapidAPI item_detail_2 with curated IDs — this is the only free endpoint available
-        // We fetch real products one by one using confirmed working ID patterns
-        const baseIds = generateAliIds(searchQuery, limit * 3)
-        setProgress(`📦 Obteniendo productos de AliExpress...`)
+        // Use Stagehand (Browserbase) for reliable scraping
+        const stageRes = await fetch('/api/stagehand-bulk', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: searchUrl, limit })
+        })
+        const stageData = await stageRes.json()
 
-        for (let i = 0; i < baseIds.length && rawProducts.length < limit; i++) {
-          const id = baseIds[i]
-          setProgress(`📦 Producto ${rawProducts.length + 1}/${limit} — buscando...`)
+        if (stageData.error) throw new Error(`Stagehand error: ${stageData.error}`)
+
+        const stageProducts = stageData.products || []
+        setProgress(`✅ ${stageProducts.length} productos encontrados. Obteniendo detalles...`)
+
+        for (let i = 0; i < stageProducts.length && rawProducts.length < limit; i++) {
+          const sp = stageProducts[i]
+          setProgress(`📦 Producto ${i+1}/${stageProducts.length}...`)
           try {
-            const detailRes = await fetch(`/api/ali-proxy?url=https://www.aliexpress.com/item/${id}.html`)
-            const detail = await detailRes.json()
-            if (detail.raw?.title && detail.raw?.price > 0) {
-              rawProducts.push({
-                title: detail.raw.title,
-                price: detail.raw.price,
-                available_quantity: 50,
-                category_id: '',
-                permalink: `https://www.aliexpress.com/item/${id}.html`,
-                thumbnail: detail.raw.images?.[0] || '',
-                images: detail.raw.images || [],
-                source: 'aliexpress',
-                ali_id: id,
-              })
+            // Get full details via RapidAPI for clean images
+            if (sp.id && sp.id.length >= 10) {
+              const detailRes = await fetch(`/api/ali-proxy?url=https://www.aliexpress.com/item/${sp.id}.html`)
+              const detail = await detailRes.json()
+              if (detail.raw?.title && detail.raw?.price > 0) {
+                rawProducts.push({
+                  title: detail.raw.title,
+                  price: detail.raw.price,
+                  available_quantity: 50,
+                  category_id: '',
+                  permalink: `https://www.aliexpress.com/item/${sp.id}.html`,
+                  thumbnail: detail.raw.images?.[0] || sp.image || '',
+                  images: detail.raw.images?.length > 0 ? detail.raw.images : [sp.image].filter(Boolean),
+                  source: 'aliexpress',
+                  ali_id: sp.id,
+                })
+              }
             }
           } catch { /* skip */ }
-          await new Promise(r => setTimeout(r, 200))
+          await new Promise(r => setTimeout(r, 300))
         }
 
         if (rawProducts.length === 0) {
-          throw new Error('No se encontraron productos. El importador individual sí funciona — importa productos uno a uno desde AliExpress usando la sección "Importar".')
+          throw new Error('Stagehand no encontró productos. Verifica la URL e intenta de nuevo.')
         }
       } else {
         setError('URL no reconocida.'); setLoading(false); return
