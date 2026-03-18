@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { chromium } from 'playwright-core'
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -9,6 +8,72 @@ const cors = {
 
 export async function OPTIONS() {
   return new NextResponse(null, { status: 200, headers: cors })
+}
+
+// Use Browserbase REST API to run scraping without installing Playwright
+async function scrapeWithBrowserbase(url: string, bbApiKey: string, bbProjectId: string): Promise<string> {
+  // Create session
+  const sessionRes = await fetch('https://www.browserbase.com/v1/sessions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-BB-API-Key': bbApiKey },
+    body: JSON.stringify({ projectId: bbProjectId, browserSettings: { viewport: { width: 1280, height: 800 } } }),
+  })
+  const session = await sessionRes.json()
+  if (!session.id) throw new Error('Browserbase session failed: ' + JSON.stringify(session))
+
+  // Execute via Browserbase REST debug/execute endpoint  
+  // We need to use the CDP HTTP endpoint to run JS
+  await new Promise(r => setTimeout(r, 2000))
+
+  // Navigate to URL
+  const navRes = await fetch(`https://www.browserbase.com/v1/sessions/${session.id}/navigate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-BB-API-Key': bbApiKey },
+    body: JSON.stringify({ url }),
+  })
+
+  await new Promise(r => setTimeout(r, 3000)) // wait for page load
+
+  // Get page content
+  const contentRes = await fetch(`https://www.browserbase.com/v1/sessions/${session.id}/execute`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-BB-API-Key': bbApiKey },
+    body: JSON.stringify({
+      script: `
+        (function() {
+          const products = [];
+          const seen = new Set();
+          document.querySelectorAll('a[href*="/item/"]').forEach(a => {
+            const idMatch = a.href.match(/\\/item\\/(\\d{10,})/);
+            if (!idMatch || seen.has(idMatch[1])) return;
+            const id = idMatch[1];
+            seen.add(id);
+            const card = a.closest('[class*="product"]') || a.closest('li') || a.parentElement;
+            const titleEl = card && (card.querySelector('[class*="title"]') || card.querySelector('h3') || card.querySelector('span'));
+            const priceEl = card && card.querySelector('[class*="price"]');
+            const imgEl = card && card.querySelector('img');
+            const title = titleEl ? titleEl.textContent.trim().slice(0, 200) : '';
+            const priceText = priceEl ? priceEl.textContent : '';
+            const priceMatch = priceText.match(/[\\d,]+\\.?\\d*/);
+            const price = priceMatch ? parseFloat(priceMatch[0].replace(',','')) : 0;
+            const image = imgEl ? (imgEl.src || imgEl.getAttribute('data-src') || '') : '';
+            if (title.length > 3) products.push({ id, title, price, image });
+          });
+          return JSON.stringify(products.slice(0, 20));
+        })()
+      `
+    }),
+  })
+
+  // Stop session
+  await fetch(`https://www.browserbase.com/v1/sessions/${session.id}`, {
+    method: 'DELETE',
+    headers: { 'X-BB-API-Key': bbApiKey },
+  })
+
+  if (!contentRes.ok) throw new Error('Execute failed: ' + contentRes.status)
+  const result = await contentRes.json()
+  return result.result || '[]'
 }
 
 export async function POST(req: NextRequest) {
@@ -23,69 +88,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Browserbase no configurado' }, { status: 500 })
   }
 
-  let browser
   try {
-    // Create Browserbase session via API
-    const sessionRes = await fetch('https://www.browserbase.com/v1/sessions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-BB-API-Key': bbApiKey,
-      },
-      body: JSON.stringify({ projectId: bbProjectId }),
-    })
-    const session = await sessionRes.json()
-    if (!session.id) throw new Error('No se pudo crear sesión de Browserbase')
+    const rawJson = await scrapeWithBrowserbase(url, bbApiKey, bbProjectId)
+    let products = JSON.parse(rawJson).slice(0, limit)
 
-    // Connect Playwright to Browserbase
-    browser = await chromium.connectOverCDP(
-      `wss://connect.browserbase.com?apiKey=${bbApiKey}&sessionId=${session.id}`
-    )
-
-    const context = browser.contexts()[0]
-    const page = context.pages()[0]
-
-    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 })
-    await page.waitForTimeout(3000)
-
-    // Extract all product links and data from the page
-    const rawData = await page.evaluate(() => {
-      const products: any[] = []
-      const seen = new Set<string>()
-
-      // Find all product links
-      const links = document.querySelectorAll<HTMLAnchorElement>('a[href*="/item/"]')
-      links.forEach(a => {
-        const idMatch = a.href.match(/\/item\/(\d{10,})/)
-        if (!idMatch || seen.has(idMatch[1])) return
-        const id = idMatch[1]
-        seen.add(id)
-
-        // Find the card container
-        const card = a.closest('[class*="product"]') || a.closest('li') || a.parentElement
-        const titleEl = card?.querySelector('[class*="title"], h3, h2, span') 
-        const priceEl = card?.querySelector('[class*="price"]')
-        const imgEl = card?.querySelector('img')
-
-        const title = titleEl?.textContent?.trim() || ''
-        const priceText = priceEl?.textContent || ''
-        const priceMatch = priceText.match(/[\d,]+\.?\d*/)
-        const price = priceMatch ? parseFloat(priceMatch[0].replace(',','')) : 0
-        const image = imgEl?.src || imgEl?.getAttribute('data-src') || ''
-
-        if (title.length > 3) {
-          products.push({ id, title: title.slice(0,200), price, image })
-        }
-      })
-
-      return products
-    })
-
-    await browser.close()
-
-    // Use Groq to clean up and validate the extracted data
-    let products = rawData.slice(0, limit)
-
+    // Use Groq to clean titles
     if (groqKey && products.length > 0) {
       try {
         const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
@@ -93,29 +100,23 @@ export async function POST(req: NextRequest) {
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${groqKey}` },
           body: JSON.stringify({
             model: 'llama-3.3-70b-versatile',
-            max_tokens: 2000,
+            max_tokens: 1500,
             messages: [{
               role: 'user',
-              content: `Clean this product list. Fix titles (translate to Spanish if needed, remove duplicated words). Return ONLY valid JSON array with same structure: ${JSON.stringify(products.slice(0, 10))}`
+              content: `Translate product titles to Spanish. Return ONLY a JSON object like {"products": [...same array with titles translated...]}. Array: ${JSON.stringify(products.slice(0, 10))}`
             }],
             response_format: { type: 'json_object' }
           })
         })
-        const groqData = await groqRes.json()
-        const text = groqData.choices?.[0]?.message?.content || ''
-        const parsed = JSON.parse(text)
-        if (Array.isArray(parsed)) products = parsed
-        else if (parsed.products) products = parsed.products
-      } catch { /* keep original if Groq fails */ }
+        const gd = await groqRes.json()
+        const parsed = JSON.parse(gd.choices?.[0]?.message?.content || '{}')
+        if (parsed.products?.length > 0) products = parsed.products
+      } catch { /* keep original */ }
     }
 
-    return NextResponse.json(
-      { success: true, products, total: products.length },
-      { headers: cors }
-    )
+    return NextResponse.json({ success: true, products, total: products.length }, { headers: cors })
 
   } catch (e: any) {
-    if (browser) try { await browser.close() } catch {}
     return NextResponse.json({ error: e.message }, { status: 500, headers: cors })
   }
 }
