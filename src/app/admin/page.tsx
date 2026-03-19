@@ -682,24 +682,33 @@ function AdminOrders({ orders, onRefresh }: { orders: Order[]; onRefresh: () => 
                     <select value={o.status} onChange={e => updateStatus(o.id, e.target.value)} style={{ background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 6, padding: '5px 8px', color: 'var(--text)', fontSize: 12, cursor: 'pointer', outline: 'none' }}>
                       {['pendiente','confirmado','enviado','entregado','cancelado'].map(s => <option key={s}>{s}</option>)}
                     </select>
+                    {/* CJ auto-fulfillment status */}
+                    {o.cj_order_id ? (
+                      <span style={{ fontSize: 10, color: '#10b981', fontWeight: 700, display:'flex', alignItems:'center', gap:3 }}>
+                        ✅ CJ Order: {o.cj_order_id}
+                      </span>
+                    ) : o.payment_status === 'pagado' ? (
+                      <button onClick={async () => {
+                        const addr = o.shipping_address || {}
+                        const res = await fetch('/api/cj', { method:'POST', headers:{'Content-Type':'application/json'},
+                          body: JSON.stringify({ action:'createOrder', orderNumber: o.order_number, shippingAddress: addr, products: o.items || [] })})
+                        const r = await res.json()
+                        if (r.success) { alert('✅ Pedido enviado a CJ: ' + (r.data?.orderId || 'OK')); window.location.reload() }
+                        else alert('Error CJ: ' + r.message)
+                      }} style={{ background:'rgba(14,165,233,0.1)', border:'1px solid rgba(14,165,233,0.4)', borderRadius:6, padding:'4px 8px', fontSize:11, color:'#0ea5e9', fontWeight:700, cursor:'pointer' }}>
+                        🚀 Enviar a CJ
+                      </button>
+                    ) : null}
+                    {/* Manual source links */}
                     {Array.isArray(o.items) && o.items.map((item: any, idx: number) => {
-                      if (!item.source_url) return null
-                      const isAli = item.source_url.includes('aliexpress')
-                      const isML = item.source_url.includes('mercadolibre')
+                      if (!item.source_url || item.cj_id) return null
                       return (
                         <a key={idx} href={item.source_url} target="_blank" rel="noopener noreferrer"
-                          style={{ display:'flex', alignItems:'center', gap:4,
-                            background: isAli ? 'rgba(245,158,11,0.1)' : 'rgba(255,230,0,0.1)',
-                            border: isAli ? '1px solid rgba(245,158,11,0.4)' : '1px solid rgba(255,230,0,0.3)',
-                            borderRadius:6, padding:'4px 8px', fontSize:11, color:'#f59e0b',
-                            textDecoration:'none', fontWeight:700, whiteSpace:'nowrap' }}>
-                          {isAli ? '🛒 Pedir en AliExpress' : isML ? '🛒 Pedir en ML' : '🔗 Ver fuente'}
+                          style={{ display:'flex', alignItems:'center', gap:4, background:'rgba(245,158,11,0.1)', border:'1px solid rgba(245,158,11,0.3)', borderRadius:6, padding:'4px 8px', fontSize:11, color:'#f59e0b', textDecoration:'none', fontWeight:700, whiteSpace:'nowrap' }}>
+                          🛒 Pedir manualmente
                         </a>
                       )
                     })}
-                    {o.payment_status === 'pagado' && o.status === 'confirmado' && (
-                      <span style={{ fontSize: 10, color: '#10b981', fontWeight: 700 }}>⚡ Listo para procesar</span>
-                    )}
                   </div>
                 </td>
               </tr>
@@ -772,11 +781,14 @@ function AdminBulkImporter({ onRefresh, onGoProducts }: { onRefresh: () => void;
   const [error, setError] = useState('')
 
   const examples = [
-    { label: '🛒 Bocinas AliExpress', url: 'https://www.aliexpress.com/wholesale?SearchText=bocinas+bluetooth' },
-    { label: '🛒 Auriculares AliExpress', url: 'https://www.aliexpress.com/wholesale?SearchText=auriculares+bluetooth' },
-    { label: '🛒 Smartwatch AliExpress', url: 'https://www.aliexpress.com/wholesale?SearchText=smartwatch' },
-    { label: '🛒 Ropa deportiva AliExpress', url: 'https://www.aliexpress.com/wholesale?SearchText=ropa+deportiva' },
-    { label: '🛒 Cocina AliExpress', url: 'https://www.aliexpress.com/wholesale?SearchText=cocina+hogar' },
+    { label: '🔊 Bocinas bluetooth', url: 'bocinas bluetooth' },
+    { label: '🎧 Auriculares inalámbricos', url: 'auriculares inalambricos' },
+    { label: '⌚ Smartwatch', url: 'smartwatch hombre mujer' },
+    { label: '👟 Ropa deportiva', url: 'ropa deportiva' },
+    { label: '🍳 Cocina hogar', url: 'utensilios cocina' },
+    { label: '📱 Accesorios celular', url: 'accesorios iphone android' },
+    { label: '💡 Iluminación LED', url: 'lamparas led decoracion' },
+    { label: '🎮 Gaming', url: 'accesorios gaming' },
   ]
 
   const extractKeywords = (u: string): string => {
@@ -899,19 +911,35 @@ function AdminBulkImporter({ onRefresh, onGoProducts }: { onRefresh: () => void;
   return (
     <div className="fade-in">
       <h1 style={{ fontFamily: 'Syne, sans-serif', fontSize: 26, fontWeight: 800, marginBottom: 8 }}>Importar productos en masa</h1>
-      <p style={{ color: 'var(--text2)', fontSize: 14, marginBottom: 28 }}>Pega la URL de una <strong>categoría o búsqueda</strong> e importamos todos los productos de una vez</p>
+      <p style={{ color: 'var(--text2)', fontSize: 14, marginBottom: 28 }}>Busca productos de <strong style={{color:'var(--accent)'}}>CJDropshipping</strong> — sin captchas, sin bloqueos, con fulfillment automático</p>
+
+      {/* CJ INFO BANNER */}
+      <div className="card" style={{ borderLeft: '3px solid #10b981', padding: '14px 18px', marginBottom: 20, background: 'rgba(16,185,129,0.05)' }}>
+        <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:6 }}>
+          <span style={{ fontSize:20 }}>⚡</span>
+          <span style={{ fontWeight:700, color:'#10b981', fontSize:15 }}>Impulsado por CJDropshipping</span>
+        </div>
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:8, fontSize:12, color:'var(--text2)' }}>
+          <div>✅ API oficial gratuita — no hay scraping</div>
+          <div>✅ 500,000+ productos disponibles</div>
+          <div>✅ Fulfillment automático al recibir pagos</div>
+          <div>✅ Mismos productos que AliExpress</div>
+          <div>✅ Precios a menudo más baratos</div>
+          <div>✅ Envío directo al cliente final</div>
+        </div>
+      </div>
 
       {/* DIFERENCIA CLAVE */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 24 }}>
         <div className="card" style={{ borderLeft: '3px solid var(--text3)', padding: '14px 18px' }}>
-          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6, color: 'var(--text2)' }}>Importar individual (anterior)</div>
+          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6, color: 'var(--text2)' }}>Importar individual (sección Importar)</div>
           <div style={{ fontSize: 12, color: 'var(--text3)' }}>URL de 1 producto → 1 artículo importado</div>
           <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 4 }}>Ej: aliexpress.com/item/1005007476838122.html</div>
         </div>
         <div className="card" style={{ borderLeft: '3px solid var(--accent)', padding: '14px 18px' }}>
-          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6, color: 'var(--accent)' }}>Importar masivo (este)</div>
-          <div style={{ fontSize: 12, color: 'var(--text2)' }}>URL de categoría → hasta 50 artículos a la vez</div>
-          <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 4 }}>Ej: aliexpress.com/wholesale?SearchText=bocinas</div>
+          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6, color: 'var(--accent)' }}>Importar masivo (este) — vía CJ API</div>
+          <div style={{ fontSize: 12, color: 'var(--text2)' }}>Escribe palabras clave → hasta 50 artículos a la vez</div>
+          <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 4 }}>Ej: "bocinas bluetooth" o "smartwatch hombre"</div>
         </div>
       </div>
 

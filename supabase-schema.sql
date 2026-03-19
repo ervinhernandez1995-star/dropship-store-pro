@@ -95,3 +95,69 @@ alter table customers enable row level security;
 alter table wishlists enable row level security;
 create policy "solo admin clientes" on customers for all using (auth.role() = 'service_role');
 create policy "solo admin wishlist" on wishlists for all using (auth.role() = 'service_role');
+
+-- =============================================
+-- ACTUALIZACIÓN: Campos CJ + fulfillment automático
+-- EJECUTA en Supabase > SQL Editor
+-- =============================================
+
+-- Agregar campos CJ a products
+alter table products add column if not exists cj_id text default '';
+alter table products add column if not exists cj_variant_id text default '';
+alter table products add column if not exists supplier text default 'aliexpress';
+alter table products add column if not exists cost_shipping numeric(10,2) default 0;
+alter table products add column if not exists updated_at timestamptz default now();
+
+-- Agregar campos CJ a orders para fulfillment automático
+alter table orders add column if not exists cj_order_id text default '';
+alter table orders add column if not exists fulfillment_status text default 'pending';
+alter table orders add column if not exists tracking_number text default '';
+alter table orders add column if not exists tracking_url text default '';
+alter table orders add column if not exists fulfilled_at timestamptz;
+
+-- Tabla de reviews de productos
+create table if not exists product_reviews (
+  id uuid default gen_random_uuid() primary key,
+  product_id uuid references products(id) on delete cascade,
+  customer_id uuid references customers(id) on delete set null,
+  customer_name text not null default 'Anónimo',
+  rating integer not null check (rating between 1 and 5),
+  comment text default '',
+  verified boolean default false,
+  created_at timestamptz default now()
+);
+alter table product_reviews enable row level security;
+create policy "reviews publicas" on product_reviews for select using (true);
+create policy "solo admin reviews" on product_reviews for all using (auth.role() = 'service_role');
+
+-- Tabla de cupones de descuento
+create table if not exists coupons (
+  id uuid default gen_random_uuid() primary key,
+  code text unique not null,
+  discount_type text not null default 'percent', -- 'percent' | 'fixed'
+  discount_value numeric(10,2) not null,
+  min_order numeric(10,2) default 0,
+  max_uses integer default 100,
+  uses integer default 0,
+  active boolean default true,
+  expires_at timestamptz,
+  created_at timestamptz default now()
+);
+alter table coupons enable row level security;
+create policy "cupones publicos" on coupons for select using (active = true);
+create policy "solo admin cupones" on coupons for all using (auth.role() = 'service_role');
+
+-- Tabla de visitas/analytics básico
+create table if not exists product_views (
+  id uuid default gen_random_uuid() primary key,
+  product_id uuid references products(id) on delete cascade,
+  viewed_at timestamptz default now()
+);
+alter table product_views enable row level security;
+create policy "vistas publicas insert" on product_views for insert with check (true);
+create policy "solo admin ver vistas" on product_views for select using (auth.role() = 'service_role');
+
+-- Insertar cupón de bienvenida
+insert into coupons (code, discount_type, discount_value, min_order, max_uses) 
+values ('BIENVENIDO10', 'percent', 10, 200, 1000)
+on conflict (code) do nothing;
