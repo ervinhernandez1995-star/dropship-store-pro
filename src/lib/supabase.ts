@@ -48,7 +48,25 @@ export type Order = {
   payment_status: 'pendiente' | 'pagado' | 'fallido' | 'reembolsado'
   payment_intent_id: string
   stripe_session_id: string
+  cj_order_id?: string
+  fulfillment_status?: string
+  tracking_number?: string
+  tracking_url?: string
+  fulfilled_at?: string
+  notes?: string
+  updated_at?: string
   created_at: string
+}
+
+export type OrderItem = {
+  product_id: string
+  name: string
+  price: number
+  quantity: number
+  image: string
+  source_url?: string
+  cj_id?: string
+  cj_variant_id?: string
 }
 
 export type OrderItem = {
