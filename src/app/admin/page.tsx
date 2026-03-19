@@ -412,23 +412,28 @@ function AdminProducts({ products, onRefresh }: { products: Product[]; onRefresh
   const [editing, setEditing] = useState<Product | null>(null)
   const [saving, setSaving] = useState(false)
   const [generating, setGenerating] = useState(false)
+  const [translating, setTranslating] = useState(false)
   const [search, setSearch] = useState('')
+  const [bulkFixing, setBulkFixing] = useState(false)
+  const [bulkConverting, setBulkConverting] = useState(false)
+  const [usdRate, setUsdRate] = useState(17.5)
+  const [selectedMargin, setSelectedMargin] = useState(30)
   const [form, setForm] = useState({ name: '', description: '', price: '', cost_price: '', stock: '', category: 'General', images: [] as string[], source_url: '', source_name: '', active: true })
   const [imgPreview, setImgPreview] = useState<string | null>(null)
 
   const filtered = products.filter(p => p.name.toLowerCase().includes(search.toLowerCase()))
 
-  const openNew = () => {
-    setEditing(null)
-    setForm({ name: '', description: '', price: '', cost_price: '', stock: '', category: 'General', images: [], source_url: '', source_name: '', active: true })
-    setImgPreview(null)
-    setShowForm(true)
-  }
-
   const openEdit = (p: Product) => {
     setEditing(p)
     setForm({ name: p.name, description: p.description || '', price: String(p.price), cost_price: String(p.cost_price || 0), stock: String(p.stock), category: p.category, images: p.images || [], source_url: p.source_url || '', source_name: p.source_name || '', active: p.active })
     setImgPreview(p.images?.[0] || null)
+    setShowForm(true)
+  }
+
+  const openNew = () => {
+    setEditing(null)
+    setForm({ name: '', description: '', price: '', cost_price: '', stock: '', category: 'General', images: [], source_url: '', source_name: '', active: true })
+    setImgPreview(null)
     setShowForm(true)
   }
 
@@ -455,15 +460,32 @@ function AdminProducts({ products, onRefresh }: { products: Product[]; onRefresh
     setGenerating(false)
   }
 
+  const translateTitle = async () => {
+    if (!form.name) return
+    setTranslating(true)
+    const res = await fetch('/api/ai/describe', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: form.name, action: 'translate' }) })
+    const data = await res.json()
+    if (data.translated) setForm(f => ({ ...f, name: data.translated }))
+    setTranslating(false)
+  }
+
+  const convertUSD = () => {
+    const usd = parseFloat(form.cost_price)
+    if (!usd || usd <= 0) return alert('Ingresa el precio en USD en el campo "Precio costo"')
+    const mxn = Math.round(usd * usdRate * 100) / 100
+    const withMargin = Math.ceil(mxn * (1 + selectedMargin / 100))
+    setForm(f => ({ ...f, cost_price: String(mxn), price: String(withMargin) }))
+  }
+
   const save = async () => {
     if (!form.name || !form.price) return alert('Nombre y precio son requeridos')
     setSaving(true)
     const payload = { ...form, price: Number(form.price), cost_price: Number(form.cost_price || 0), stock: Number(form.stock || 0) }
-    if (editing) {
-      await fetch(`/api/products/${editing.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
-    } else {
-      await fetch('/api/products', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
-    }
+    const url = editing ? `/api/products/${editing.id}` : '/api/products'
+    const method = editing ? 'PUT' : 'POST'
+    const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+    const data = await res.json()
+    if (data.error) { alert('Error: ' + data.error); setSaving(false); return }
     setSaving(false)
     setShowForm(false)
     onRefresh()
@@ -480,41 +502,105 @@ function AdminProducts({ products, onRefresh }: { products: Product[]; onRefresh
     onRefresh()
   }
 
+  const bulkFixChinese = async () => {
+    if (!confirm('¿Traducir TODOS los productos en chino al español? Puede tardar varios minutos.')) return
+    setBulkFixing(true)
+    const r = await fetch('/api/fix-products', { method: 'POST' })
+    const d = await r.json()
+    setBulkFixing(false)
+    alert(`✅ ${d.fixed} productos traducidos de ${d.total} en chino.`)
+    onRefresh()
+  }
+
+  const bulkConvertUSD = async () => {
+    if (!confirm(`¿Convertir el precio costo de TODOS los productos de USD a MXN usando $${usdRate} y aplicar ${selectedMargin}% de margen?`)) return
+    setBulkConverting(true)
+    // Get all products with low cost price (likely USD)
+    const lowPriceProducts = products.filter(p => p.cost_price > 0 && p.cost_price < 200)
+    let updated = 0
+    for (const p of lowPriceProducts) {
+      const mxnCost = Math.round(p.cost_price * usdRate * 100) / 100
+      const newPrice = Math.ceil(mxnCost * (1 + selectedMargin / 100))
+      await fetch(`/api/products/${p.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cost_price: mxnCost, price: newPrice }) })
+      updated++
+      await new Promise(r => setTimeout(r, 80))
+    }
+    setBulkConverting(false)
+    alert(`✅ ${updated} productos actualizados con conversión USD→MXN`)
+    onRefresh()
+  }
+
   return (
     <div className="fade-in">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+      {/* HEADER */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
         <div>
-          <h1 style={{ fontFamily: 'Syne, sans-serif', fontSize: 26, fontWeight: 800 }}>Productos ({products.length})</h1>
-          <button onClick={async () => {
-            if (!confirm('¿Traducir todos los productos en chino al español? Esto puede tardar varios minutos.')) return
-            const r = await fetch('/api/fix-products', { method: 'POST' })
-            const d = await r.json()
-            alert(`✅ Listo: ${d.fixed} productos traducidos de ${d.total} en chino.`)
-            onRefresh()
-          }} style={{ padding: '8px 16px', background: 'rgba(14,165,233,0.1)', border: '1px solid rgba(14,165,233,0.3)', borderRadius: 8, color: 'var(--accent)', cursor: 'pointer', fontSize: 12, fontWeight: 700, marginLeft: 12 }}>
-            🌐 Traducir productos en chino
-          </button>
-          <p style={{ color: 'var(--text2)', fontSize: 14 }}>Gestiona tu catálogo de productos</p>
+          <h1 style={{ fontFamily: 'Syne, sans-serif', fontSize: 26, fontWeight: 800, marginBottom: 4 }}>Productos ({products.length})</h1>
+          <p style={{ color: 'var(--text2)', fontSize: 14 }}>Gestiona tu catálogo</p>
         </div>
         <button onClick={openNew} className="btn-primary" style={{ padding: '10px 22px', fontSize: 14 }}>+ Nuevo producto</button>
       </div>
 
+      {/* BULK TOOLS */}
+      <div className="card" style={{ marginBottom: 20, padding: '16px 20px' }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--accent)', marginBottom: 12 }}>🛠 Herramientas masivas</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+
+          {/* Translate tool */}
+          <div style={{ background: 'var(--bg3)', borderRadius: 10, padding: 14, border: '1px solid var(--border)' }}>
+            <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 6 }}>🌐 Traducir productos en chino</div>
+            <div style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 10 }}>Detecta y traduce automáticamente todos los títulos y descripciones en chino al español usando IA.</div>
+            <button onClick={bulkFixChinese} disabled={bulkFixing}
+              style={{ padding: '8px 16px', background: bulkFixing ? 'var(--bg2)' : 'linear-gradient(135deg,#7c3aed,#0ea5e9)', border: 'none', borderRadius: 8, color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: 12 }}>
+              {bulkFixing ? '⏳ Traduciendo...' : '🌐 Traducir todos'}
+            </button>
+          </div>
+
+          {/* USD converter tool */}
+          <div style={{ background: 'var(--bg3)', borderRadius: 10, padding: 14, border: '1px solid var(--border)' }}>
+            <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 6 }}>💱 Convertir precios USD → MXN</div>
+            <div style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 10 }}>Convierte los costos de productos importados de dólares a pesos y aplica margen de ganancia.</div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8, flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12 }}>
+                <span style={{ color: 'var(--text3)' }}>1 USD =</span>
+                <input type="number" value={usdRate} onChange={e => setUsdRate(parseFloat(e.target.value)||17.5)}
+                  style={{ width: 64, padding: '4px 8px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text)', fontSize: 12, outline: 'none', textAlign: 'center' }} />
+                <span style={{ color: 'var(--text3)' }}>MXN</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12 }}>
+                <span style={{ color: 'var(--text3)' }}>Margen:</span>
+                <input type="number" value={selectedMargin} onChange={e => setSelectedMargin(parseInt(e.target.value)||30)}
+                  style={{ width: 50, padding: '4px 8px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text)', fontSize: 12, outline: 'none', textAlign: 'center' }} />
+                <span style={{ color: 'var(--text3)' }}>%</span>
+              </div>
+            </div>
+            <button onClick={bulkConvertUSD} disabled={bulkConverting}
+              style={{ padding: '8px 16px', background: bulkConverting ? 'var(--bg2)' : 'linear-gradient(135deg,#f59e0b,#ef4444)', border: 'none', borderRadius: 8, color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: 12 }}>
+              {bulkConverting ? '⏳ Convirtiendo...' : '💱 Convertir todos'}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* SEARCH */}
       <div style={{ marginBottom: 16 }}>
         <input className="input" value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 Buscar productos..." style={{ maxWidth: 340 }} />
       </div>
 
+      {/* TABLE */}
       <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
           <thead>
             <tr style={{ borderBottom: '1px solid var(--border)', background: 'rgba(255,255,255,0.02)' }}>
-              {['Producto', 'Precio venta', 'Costo', 'Margen', 'Stock', 'Fuente', 'Estado', 'Acciones'].map(h => (
+              {['Producto', 'Precio venta', 'Costo MXN', 'Margen', 'Stock', 'Fuente', 'Estado', 'Acciones'].map(h => (
                 <th key={h} style={{ textAlign: 'left', padding: '13px 16px', color: 'var(--text3)', fontSize: 11, textTransform: 'uppercase', letterSpacing: 1, fontWeight: 600 }}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {filtered.map(p => {
-              const margin = p.price > 0 ? Math.round(((p.price - p.cost_price) / p.price) * 100) : 0
+              const margin = p.price > 0 && p.cost_price > 0 ? Math.round(((p.price - p.cost_price) / p.price) * 100) : 0
+              const hasChinese = /[\u4e00-\u9fff]/.test(p.name)
               return (
                 <tr key={p.id} style={{ borderBottom: '1px solid rgba(30,45,71,.4)', transition: 'background .15s' }}
                   onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.02)')}
@@ -525,13 +611,19 @@ function AdminProducts({ products, onRefresh }: { products: Product[]; onRefresh
                         {p.images?.[0] ? <img src={p.images[0]} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="" /> : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>📦</div>}
                       </div>
                       <div>
-                        <div style={{ fontWeight: 600, maxWidth: 200 }}>{p.name.slice(0, 45)}{p.name.length > 45 ? '...' : ''}</div>
+                        <div style={{ fontWeight: 600, maxWidth: 200, color: hasChinese ? '#f59e0b' : 'inherit' }}>
+                          {hasChinese && <span title="Título en chino" style={{ marginRight: 4 }}>🇨🇳</span>}
+                          {p.name.slice(0, 42)}{p.name.length > 42 ? '...' : ''}
+                        </div>
                         <div style={{ fontSize: 11, color: 'var(--text3)' }}>{p.category}</div>
                       </div>
                     </div>
                   </td>
                   <td style={{ padding: '12px 16px', fontWeight: 800, color: 'var(--accent)', fontSize: 15 }}>${p.price.toLocaleString()}</td>
-                  <td style={{ padding: '12px 16px', color: 'var(--text2)' }}>${p.cost_price.toLocaleString()}</td>
+                  <td style={{ padding: '12px 16px', color: p.cost_price < 200 && p.cost_price > 0 ? '#f59e0b' : 'var(--text2)', fontSize: 13 }}>
+                    ${p.cost_price.toLocaleString()}
+                    {p.cost_price > 0 && p.cost_price < 200 && <span title="Posiblemente en USD" style={{ marginLeft: 4, fontSize: 10 }}>⚠️USD?</span>}
+                  </td>
                   <td style={{ padding: '12px 16px' }}><span style={{ background: margin > 20 ? 'rgba(16,185,129,.15)' : 'rgba(245,158,11,.15)', color: margin > 20 ? 'var(--accent3)' : '#f59e0b', padding: '3px 10px', borderRadius: 20, fontSize: 12, fontWeight: 700 }}>+{margin}%</span></td>
                   <td style={{ padding: '12px 16px', color: p.stock < 5 ? 'var(--red)' : 'var(--text)', fontWeight: p.stock < 5 ? 700 : 400 }}>{p.stock < 5 ? '⚠️ ' : ''}{p.stock}</td>
                   <td style={{ padding: '12px 16px' }}>
@@ -556,52 +648,89 @@ function AdminProducts({ products, onRefresh }: { products: Product[]; onRefresh
           <div style={{ textAlign: 'center', padding: '48px', color: 'var(--text3)' }}>
             <div style={{ fontSize: 40, marginBottom: 12 }}>📦</div>
             <div style={{ fontSize: 16, fontWeight: 600 }}>{search ? 'Sin resultados' : 'No hay productos aún'}</div>
-            <div style={{ fontSize: 13, marginTop: 6 }}>{search ? 'Intenta con otro término' : 'Usa el importador de MercadoLibre o agrega uno manualmente'}</div>
           </div>
         )}
       </div>
 
-      {/* MODAL */}
+      {/* EDIT MODAL */}
       {showForm && (
-        <div onClick={() => setShowForm(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.75)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(4px)' }}>
-          <div onClick={e => e.stopPropagation()} style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 16, padding: 28, width: 580, maxHeight: '90vh', overflowY: 'auto' }}>
+        <div onClick={() => setShowForm(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.8)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(4px)' }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 16, padding: 28, width: 600, maxHeight: '92vh', overflowY: 'auto' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 22 }}>
               <h2 style={{ fontFamily: 'Syne, sans-serif', fontSize: 20, fontWeight: 800 }}>{editing ? '✏️ Editar' : '➕ Nuevo'} Producto</h2>
               <button onClick={() => setShowForm(false)} style={{ background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 8, width: 32, height: 32, cursor: 'pointer', color: 'var(--text2)', fontSize: 16 }}>✕</button>
             </div>
 
+            {/* Image */}
             <div style={{ marginBottom: 16 }}>
               <label className="label">Foto del producto</label>
               <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-                <div style={{ width: 88, height: 88, borderRadius: 12, background: 'var(--bg3)', border: '2px solid var(--border)', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 32, flexShrink: 0 }}>
+                <div style={{ width: 80, height: 80, borderRadius: 10, background: 'var(--bg3)', border: '2px solid var(--border)', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28, flexShrink: 0 }}>
                   {imgPreview ? <img src={imgPreview} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="" /> : '📦'}
                 </div>
-                <label style={{ flex: 1, border: '2px dashed var(--border)', borderRadius: 10, padding: '20px', textAlign: 'center', cursor: 'pointer', color: 'var(--text2)', fontSize: 13, transition: 'border-color .2s' }}
-                  onMouseEnter={e => (e.currentTarget.style.borderColor = 'var(--accent)')}
-                  onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--border)')}>
-                  📸 Clic para subir foto<br /><span style={{ fontSize: 11, color: 'var(--text3)' }}>JPG, PNG, WebP</span>
+                <label style={{ flex: 1, border: '2px dashed var(--border)', borderRadius: 10, padding: '16px', textAlign: 'center', cursor: 'pointer', color: 'var(--text2)', fontSize: 12 }}>
+                  📸 Subir foto<br /><span style={{ fontSize: 10, color: 'var(--text3)' }}>JPG, PNG, WebP</span>
                   <input type="file" accept="image/*" onChange={handleImage} style={{ display: 'none' }} />
                 </label>
               </div>
+              {/* Current images preview */}
+              {form.images.length > 1 && (
+                <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
+                  {form.images.slice(0,8).map((img, i) => (
+                    <div key={i} onClick={() => setImgPreview(img)} style={{ width: 40, height: 40, borderRadius: 6, overflow: 'hidden', cursor: 'pointer', border: imgPreview===img?'2px solid var(--accent)':'2px solid transparent' }}>
+                      <img src={img} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="" />
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
+            {/* Title with translate */}
             <div style={{ marginBottom: 14 }}>
-              <label className="label">Nombre del producto *</label>
-              <input className="input" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Ej: Auriculares Bluetooth Pro 40h" />
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                <label className="label" style={{ margin: 0 }}>Nombre del producto *</label>
+                <button onClick={translateTitle} disabled={translating || !form.name}
+                  style={{ background: 'rgba(124,58,237,0.15)', border: '1px solid rgba(124,58,237,0.3)', borderRadius: 6, padding: '4px 10px', color: '#a78bfa', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}>
+                  {translating ? '⏳ Traduciendo...' : '🌐 Traducir al español'}
+                </button>
+              </div>
+              <input className="input" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Nombre del producto" />
             </div>
 
+            {/* Description with AI */}
             <div style={{ marginBottom: 14 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
                 <label className="label" style={{ margin: 0 }}>Descripción</label>
-                <button onClick={generateDesc} disabled={generating} style={{ background: 'linear-gradient(135deg,#7c3aed,#00d4ff)', border: 'none', borderRadius: 6, padding: '5px 12px', color: '#fff', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}>
-                  {generating ? '⏳' : '🤖'} {generating ? 'Generando...' : 'Generar con IA'}
+                <button onClick={generateDesc} disabled={generating}
+                  style={{ background: 'linear-gradient(135deg,#7c3aed,#00d4ff)', border: 'none', borderRadius: 6, padding: '5px 12px', color: '#fff', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}>
+                  {generating ? '⏳ Generando...' : '🤖 Generar con IA'}
                 </button>
               </div>
               <textarea className="input" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} placeholder="Descripción del producto..." rows={3} style={{ resize: 'vertical' }} />
             </div>
 
+            {/* Prices with USD converter */}
+            <div style={{ background: 'var(--bg3)', borderRadius: 10, padding: 12, marginBottom: 14, border: '1px solid var(--border)' }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: '#f59e0b', marginBottom: 8 }}>💱 Convertidor USD → MXN</div>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12 }}>
+                  <span style={{ color: 'var(--text3)' }}>1 USD =</span>
+                  <input type="number" value={usdRate} onChange={e => setUsdRate(parseFloat(e.target.value)||17.5)}
+                    style={{ width: 60, padding: '4px 6px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text)', fontSize: 12, outline: 'none' }} />
+                  <span style={{ color: 'var(--text3)' }}>MXN · Margen:</span>
+                  <input type="number" value={selectedMargin} onChange={e => setSelectedMargin(parseInt(e.target.value)||30)}
+                    style={{ width: 46, padding: '4px 6px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text)', fontSize: 12, outline: 'none' }} />
+                  <span style={{ color: 'var(--text3)' }}>%</span>
+                </div>
+                <button onClick={convertUSD} style={{ padding: '5px 12px', background: 'rgba(245,158,11,0.15)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 6, color: '#f59e0b', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}>
+                  Aplicar conversión
+                </button>
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>Ingresa el costo en USD abajo → clic "Aplicar" para convertir y calcular precio de venta</div>
+            </div>
+
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 14 }}>
-              {[{ key: 'price', label: 'Precio venta *', placeholder: '499' }, { key: 'cost_price', label: 'Precio costo', placeholder: '300' }, { key: 'stock', label: 'Stock', placeholder: '50' }].map(f => (
+              {[{ key: 'price', label: 'Precio venta MXN *', placeholder: '499' }, { key: 'cost_price', label: 'Costo (USD o MXN)', placeholder: '5.99' }, { key: 'stock', label: 'Stock', placeholder: '50' }].map(f => (
                 <div key={f.key}>
                   <label className="label">{f.label}</label>
                   <input className="input" type="number" value={(form as any)[f.key]} onChange={e => setForm(prev => ({ ...prev, [f.key]: e.target.value }))} placeholder={f.placeholder} />
@@ -617,14 +746,19 @@ function AdminProducts({ products, onRefresh }: { products: Product[]; onRefresh
                 </select>
               </div>
               <div>
-                <label className="label">Proveedor</label>
-                <input className="input" value={form.source_name} onChange={e => setForm(f => ({ ...f, source_name: e.target.value }))} placeholder="MercadoLibre, Amazon..." />
+                <label className="label">Estado</label>
+                <select className="input" value={String(form.active)} onChange={e => setForm(f => ({ ...f, active: e.target.value === 'true' }))}>
+                  <option value="true">● Activo</option>
+                  <option value="false">○ Pausado</option>
+                </select>
               </div>
             </div>
 
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
               <button onClick={() => setShowForm(false)} className="btn-ghost">Cancelar</button>
-              <button onClick={save} disabled={saving} className="btn-primary" style={{ minWidth: 140 }}>{saving ? '⏳ Guardando...' : editing ? '✅ Guardar cambios' : '➕ Crear producto'}</button>
+              <button onClick={save} disabled={saving} className="btn-primary" style={{ minWidth: 160 }}>
+                {saving ? '⏳ Guardando...' : editing ? '✅ Guardar cambios' : '➕ Crear producto'}
+              </button>
             </div>
           </div>
         </div>
@@ -632,6 +766,7 @@ function AdminProducts({ products, onRefresh }: { products: Product[]; onRefresh
     </div>
   )
 }
+
 
 // ══════════════════════════════════════════
 // PEDIDOS
