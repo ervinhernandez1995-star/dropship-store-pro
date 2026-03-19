@@ -2,14 +2,27 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { groqChat } from '@/lib/groq'
 
-function detectCategory(catId: string): string {
-  const map: Record<string, string> = {
+function detectCategory(catIdOrName: string): string {
+  // Try ML category ID first
+  const mlMap: Record<string, string> = {
     MLM1648: 'Electrónica', MLM1276: 'Electrónica', MLM1051: 'Electrónica',
     MLM1430: 'Hogar', MLM1574: 'Hogar', MLM1168: 'Deportes',
     MLM1182: 'Moda', MLM1185: 'Moda', MLM1246: 'Belleza',
     MLM1132: 'Automotriz', MLM1367: 'Juguetes',
   }
-  return Object.entries(map).find(([k]) => catId.startsWith(k))?.[1] || 'General'
+  const byId = Object.entries(mlMap).find(([k]) => catIdOrName.startsWith(k))?.[1]
+  if (byId) return byId
+
+  // Detect from product name keywords
+  const n = catIdOrName.toLowerCase()
+  if (/auricular|headphone|bluetooth|smartwatch|bocina|speaker|cargador|cable|gaming|mouse|teclado|camara|led|electronic|phone|celular|earphone|earbuds|tws|wireless|usb|bateria|power.?bank/.test(n)) return 'Electrónica'
+  if (/ropa|camisa|pantalon|vestido|zapato|tenis|bolsa|mochila|fashion|shirt|dress|shoe|pants|jacket|hoodie|sudadera|blusa|playera|legging|bikini|falda|pulsera|collar|aretes/.test(n)) return 'Moda'
+  if (/hogar|cocina|lampara|silla|mesa|decoracion|cojin|cortina|alfombra|organizador|almohada|toalla|jarron/.test(n)) return 'Hogar'
+  if (/deporte|gym|fitness|yoga|correr|ciclismo|sport|exercise|workout|pesas|running/.test(n)) return 'Deportes'
+  if (/belleza|maquillaje|crema|perfume|makeup|skincare|serum|labial|mascara|bronceador|hidratante/.test(n)) return 'Belleza'
+  if (/juguete|niño|toy|game|puzzle|kids|infantil|bebe|peluche|figura|muñeca/.test(n)) return 'Juguetes'
+  if (/auto|carro|vehiculo|car|automotive|motor/.test(n)) return 'Automotriz'
+  return 'General'
 }
 
 export async function OPTIONS() {
@@ -35,22 +48,45 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'Datos incompletos del producto' }, { status: 400 })
       }
 
+      // Detect if title is in Chinese and translate it
+      const hasChinese = /[一-鿿]/.test(title)
+      const hasChineseAttrs = /[一-鿿]/.test(attrs || '')
+
+      let cleanTitle = title
+      if (hasChinese) {
+        try {
+          cleanTitle = await groqChat([
+            { role: 'system', content: 'Translate this Chinese product title to Spanish (Mexico). Make it natural and commercial. Return ONLY the translated title, nothing else.' },
+            { role: 'user', content: title },
+          ])
+          cleanTitle = cleanTitle.trim().replace(/^["']|["']$/g, '')
+        } catch { cleanTitle = title }
+      }
+
+      const cleanAttrs = hasChineseAttrs ? '' : (attrs || '')
+
       const description = await groqChat([
         { role: 'system', content: 'Eres experto en ecommerce mexicano. Escribe descripción de producto atractiva en español. Máximo 80 palabras. Solo párrafo, sin listas ni asteriscos.' },
-        { role: 'user', content: `Descripción para: "${title}". ${attrs ? `Características: ${attrs}.` : ''} Precio: $${price} MXN.` },
+        { role: 'user', content: `Descripción para: "${cleanTitle}". ${cleanAttrs ? `Características: ${cleanAttrs}.` : ''} Precio: $${price} MXN.` },
       ])
 
       const suggestedPrice = Math.ceil(price * 1.20)
-      const category = detectCategory(category_id || '')
+      const category = detectCategory(category_id || '') === 'General' ? detectCategory(cleanTitle) : detectCategory(category_id || '')
+
+      // Clean and deduplicate images
+      const cleanImages = Array.isArray(images) 
+        ? images.filter(Boolean).filter((img: string, i: number, arr: string[]) => arr.indexOf(img) === i)
+            .map((img: string) => img.replace('http://', 'https://')).slice(0, 8)
+        : []
 
       const { data: product, error } = await supabaseAdmin.from('products').insert([{
-        name: title,
+        name: cleanTitle,
         description,
         price: suggestedPrice,
         cost_price: price,
         stock: stock || 10,
         category,
-        images: images || [],
+        images: cleanImages,
         source_url,
         source_name,
         active: true,

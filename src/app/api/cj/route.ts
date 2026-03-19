@@ -54,13 +54,19 @@ export async function GET(req: NextRequest) {
       const data = await res.json()
       if (!data.result) throw new Error(data.message)
 
+      // Helper: detect Chinese text
+      const isChinese = (t: string) => /[一-鿿]/.test(t || '')
+
       const products = (data.data?.list || []).map((p: any) => ({
         id: p.pid,
-        title: p.productNameEn,
-        titleEs: p.productName || p.productNameEn,
+        title: isChinese(p.productNameEn) ? (p.productName || p.productNameEn) : p.productNameEn,
+        titleEs: isChinese(p.productName) ? p.productNameEn : (p.productName || p.productNameEn),
         price: parseFloat(p.sellPrice || p.productPrice || '0'),
         image: p.productImage || p.productImgUrl || '',
-        images: p.productImageSet ? p.productImageSet.split(',') : [p.productImage].filter(Boolean),
+        images: [
+          ...(p.productImageSet ? p.productImageSet.split(',').filter(Boolean) : []),
+          ...(p.productImage ? [p.productImage] : []),
+        ].filter(Boolean).filter((img: string, i: number, arr: string[]) => arr.indexOf(img) === i).map((img: string) => img.replace('http://', 'https://')).slice(0, 8),
         category: p.categoryName || '',
         stock: p.productWeight ? 999 : 50,
         source: 'CJDropshipping',
@@ -84,9 +90,15 @@ export async function GET(req: NextRequest) {
       if (!data.result) throw new Error(data.message)
 
       const p = data.data
-      const images = p.productImageSet
-        ? p.productImageSet.split(',').filter(Boolean)
-        : [p.productImage].filter(Boolean)
+      const images = [
+        ...(p.productImageSet ? p.productImageSet.split(',').filter(Boolean) : []),
+        ...(p.productImage ? [p.productImage] : []),
+        ...(p.productImgUrl ? [p.productImgUrl] : []),
+      ]
+        .filter(Boolean)
+        .filter((img, idx, arr) => arr.indexOf(img) === idx) // deduplicate
+        .map((img: string) => img.replace('http://', 'https://'))
+        .slice(0, 8)
 
       return NextResponse.json({
         success: true,

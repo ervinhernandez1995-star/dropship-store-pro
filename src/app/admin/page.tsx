@@ -861,20 +861,32 @@ function AdminBulkImporter({ onRefresh, onGoProducts }: { onRefresh: () => void;
         if (cjData.error) throw new Error('CJ API: ' + cjData.error)
 
         const cjProducts = cjData.products || []
-        setProgress(`✅ ${cjProducts.length} productos encontrados`)
+        setProgress(`✅ ${cjProducts.length} productos encontrados. Obteniendo fotos...`)
 
         for (const p of cjProducts.slice(0, limit)) {
+          // Fetch full product detail to get ALL images (productImageSet)
+          let allImages = p.images || [p.image].filter(Boolean)
+          try {
+            setProgress(`📸 Obteniendo fotos de ${rawProducts.length + 1}/${Math.min(cjProducts.length, limit)}...`)
+            const detailRes = await fetch(`/api/cj?action=detail&pid=${p.cj_id}`)
+            const detail = await detailRes.json()
+            if (detail.product?.images?.length > 0) {
+              allImages = detail.product.images
+            }
+          } catch { /* use list image as fallback */ }
+
           rawProducts.push({
             title: p.titleEs || p.title,
             price: p.price,
             available_quantity: p.stock || 50,
             category_id: '',
             permalink: p.source_url,
-            thumbnail: p.image || p.images?.[0] || '',
-            images: p.images || [p.image].filter(Boolean),
+            thumbnail: allImages[0] || '',
+            images: allImages,
             source: 'cjdropshipping',
             cj_id: p.cj_id,
           })
+          await new Promise(r => setTimeout(r, 200))
         }
 
         if (rawProducts.length === 0) {

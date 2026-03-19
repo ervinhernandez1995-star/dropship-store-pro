@@ -5,14 +5,22 @@ import ChatBot from '@/components/store/ChatBot'
 import CartDrawer from '@/components/store/CartDrawer'
 
 const CATS = [
-  { id: 'Todos', icon: '🏠', label: 'Inicio' },
-  { id: 'Electrónica', icon: '⚡', label: 'Electrónica' },
-  { id: 'Moda', icon: '👗', label: 'Moda' },
-  { id: 'Hogar', icon: '🏡', label: 'Hogar' },
-  { id: 'Deportes', icon: '💪', label: 'Deportes' },
-  { id: 'Belleza', icon: '✨', label: 'Belleza' },
-  { id: 'Juguetes', icon: '🎮', label: 'Juguetes' },
-  { id: 'Automotriz', icon: '🚗', label: 'Auto' },
+  { id: 'Todos', icon: '🏠', label: 'Inicio', color: '#0ea5e9',
+    img: 'https://images.unsplash.com/photo-1472851294608-062f824d29cc?w=300&q=80' },
+  { id: 'Electrónica', icon: '⚡', label: 'Electrónica', color: '#7c3aed',
+    img: 'https://images.unsplash.com/photo-1498049794561-7780e7231661?w=300&q=80' },
+  { id: 'Moda', icon: '👗', label: 'Moda', color: '#ec4899',
+    img: 'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=300&q=80' },
+  { id: 'Hogar', icon: '🏡', label: 'Hogar', color: '#f59e0b',
+    img: 'https://images.unsplash.com/photo-1555041469-a586c61ea9bc?w=300&q=80' },
+  { id: 'Deportes', icon: '💪', label: 'Deportes', color: '#10b981',
+    img: 'https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=300&q=80' },
+  { id: 'Belleza', icon: '✨', label: 'Belleza', color: '#f43f5e',
+    img: 'https://images.unsplash.com/photo-1522335789203-aabd1fc54bc9?w=300&q=80' },
+  { id: 'Juguetes', icon: '🎮', label: 'Juguetes', color: '#8b5cf6',
+    img: 'https://images.unsplash.com/photo-1558060370-d644479cb6f7?w=300&q=80' },
+  { id: 'Automotriz', icon: '🚗', label: 'Auto', color: '#64748b',
+    img: 'https://images.unsplash.com/photo-1552519507-da3b142c6e3d?w=300&q=80' },
 ]
 
 const SORTS = [
@@ -49,9 +57,24 @@ export default function TiendaPage() {
   const searchRef = useRef<HTMLInputElement>(null)
 
   const banners = [
-    { bg: 'linear-gradient(135deg,#0ea5e9,#7c3aed)', text: '🔥 Ofertas del día', sub: 'Hasta 70% de descuento', btn: 'Ver ofertas' },
-    { bg: 'linear-gradient(135deg,#f59e0b,#ef4444)', text: '⚡ Envío gratis', sub: 'En pedidos mayores a $599', btn: 'Comprar ahora' },
-    { bg: 'linear-gradient(135deg,#10b981,#0ea5e9)', text: '✨ Nuevos productos', sub: 'Recién llegados esta semana', btn: 'Explorar' },
+    { 
+      bg: 'linear-gradient(135deg,#0ea5e9,#7c3aed)', 
+      text: '🔥 Ofertas del día', sub: 'Hasta 70% de descuento', btn: 'Ver ofertas',
+      img: 'https://images.unsplash.com/photo-1607082348824-0a96f2a4b9da?w=400&q=80',
+      action: () => { setSearch('oferta'); setCategory('Todos') }
+    },
+    { 
+      bg: 'linear-gradient(135deg,#f59e0b,#ef4444)', 
+      text: '⚡ Envío gratis', sub: 'En pedidos mayores a $599 MXN', btn: 'Comprar ahora',
+      img: 'https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?w=400&q=80',
+      action: () => { setSearch(''); setCategory('Todos') }
+    },
+    { 
+      bg: 'linear-gradient(135deg,#10b981,#0ea5e9)', 
+      text: '✨ Nuevos productos', sub: 'Recién llegados esta semana', btn: 'Explorar',
+      img: 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=400&q=80',
+      action: () => { setCategory('Todos'); setSort('new') }
+    },
   ]
 
   useEffect(() => {
@@ -206,9 +229,10 @@ export default function TiendaPage() {
         <nav style={{ borderTop:'1px solid #f3f4f6', background:'#fff' }}>
           <div style={{ maxWidth:1300, margin:'0 auto', padding:'0 20px', display:'flex', gap:4, overflowX:'auto' }}>
             {CATS.map(c => (
-              <button key={c.id} className="cat-btn" onClick={() => { setCategory(c.id); setSearch(''); setSearchInput('') }}
-                style={{ padding:'10px 16px', background:category===c.id?'#0ea5e9':'transparent', color:category===c.id?'#fff':'#555', border:'none', cursor:'pointer', fontSize:13, fontWeight:600, whiteSpace:'nowrap', borderBottom:category===c.id?'2px solid #0ea5e9':'2px solid transparent', transition:'all .15s', display:'flex', alignItems:'center', gap:6 }}>
-                <span>{c.icon}</span>{c.label}
+              <button key={c.id} onClick={() => { setCategory(c.id); setSearch(''); setSearchInput('') }}
+                style={{ padding:'10px 16px', background:'transparent', color:category===c.id?c.color:'#555', border:'none', cursor:'pointer', fontSize:13, fontWeight:category===c.id?700:500, whiteSpace:'nowrap', borderBottom:`2px solid ${category===c.id?c.color:'transparent'}`, transition:'all .15s', display:'flex', alignItems:'center', gap:6, flexShrink:0 }}>
+                {c.img && <div style={{ width:20, height:20, borderRadius:4, overflow:'hidden', flexShrink:0 }}><img src={c.img} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }} /></div>}
+                {c.label}
               </button>
             ))}
           </div>
@@ -219,13 +243,17 @@ export default function TiendaPage() {
 
         {/* HERO BANNER */}
         {category === 'Todos' && !search && (
-          <div style={{ borderRadius:16, overflow:'hidden', marginBottom:24, position:'relative', height:200, cursor:'pointer', background:banners[bannerIdx].bg, display:'flex', alignItems:'center', justifyContent:'space-between', padding:'0 48px', transition:'background 1s' }}>
-            <div>
-              <h2 style={{ color:'#fff', fontFamily:'Syne, sans-serif', fontSize:32, fontWeight:800, margin:'0 0 8px' }}>{banners[bannerIdx].text}</h2>
-              <p style={{ color:'rgba(255,255,255,0.85)', fontSize:16, margin:'0 0 20px' }}>{banners[bannerIdx].sub}</p>
-              <button style={{ background:'#fff', color:'#0ea5e9', border:'none', borderRadius:8, padding:'10px 24px', fontWeight:700, fontSize:14, cursor:'pointer' }}>{banners[bannerIdx].btn} →</button>
+          <div onClick={() => banners[bannerIdx].action?.()} style={{ borderRadius:16, overflow:'hidden', marginBottom:24, position:'relative', height:220, cursor:'pointer', background:banners[bannerIdx].bg, display:'flex', alignItems:'center', justifyContent:'space-between', padding:'0 48px', transition:'all .5s' }}>
+            <div style={{ position:'relative', zIndex:2 }}>
+              <h2 style={{ color:'#fff', fontFamily:'Syne, sans-serif', fontSize:32, fontWeight:800, margin:'0 0 8px', textShadow:'0 2px 8px rgba(0,0,0,0.2)' }}>{banners[bannerIdx].text}</h2>
+              <p style={{ color:'rgba(255,255,255,0.9)', fontSize:16, margin:'0 0 20px' }}>{banners[bannerIdx].sub}</p>
+              <button onClick={e => { e.stopPropagation(); banners[bannerIdx].action?.() }} style={{ background:'#fff', color:'#0ea5e9', border:'none', borderRadius:8, padding:'10px 24px', fontWeight:700, fontSize:14, cursor:'pointer', boxShadow:'0 4px 16px rgba(0,0,0,0.15)' }}>{banners[bannerIdx].btn} →</button>
             </div>
-            <div style={{ fontSize:100, opacity:0.3 }}>🛍️</div>
+            <div style={{ position:'absolute', right:0, top:0, bottom:0, width:'40%', overflow:'hidden' }}>
+              {banners[bannerIdx].img && <img src={banners[bannerIdx].img} alt="" style={{ width:'100%', height:'100%', objectFit:'cover', opacity:0.35, mixBlendMode:'luminosity' }} />}
+              <div style={{ position:'absolute', inset:0, background:'linear-gradient(to right, rgba(0,0,0,0.4), transparent)' }} />
+            </div>
+            <div style={{ position:'absolute', inset:0, background:'linear-gradient(135deg, rgba(0,0,0,0.1), transparent)' }} />
             {/* Dots */}
             <div style={{ position:'absolute', bottom:12, left:'50%', transform:'translateX(-50%)', display:'flex', gap:6 }}>
               {banners.map((_, i) => <div key={i} onClick={() => setBannerIdx(i)} style={{ width:i===bannerIdx?24:8, height:8, borderRadius:4, background:i===bannerIdx?'#fff':'rgba(255,255,255,0.4)', cursor:'pointer', transition:'all .3s' }} />)}
@@ -233,16 +261,22 @@ export default function TiendaPage() {
           </div>
         )}
 
-        {/* QUICK CATEGORY CARDS — only on homepage */}
+        {/* QUICK CATEGORY CARDS with photos */}
         {category === 'Todos' && !search && (
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12, marginBottom:28 }}>
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:14, marginBottom:28 }}>
             {CATS.slice(1).map(c => (
               <button key={c.id} onClick={() => setCategory(c.id)}
-                style={{ padding:'20px 12px', background:'#fff', border:'2px solid #f3f4f6', borderRadius:12, cursor:'pointer', textAlign:'center', transition:'all .2s', display:'flex', flexDirection:'column', alignItems:'center', gap:8 }}
-                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = '#0ea5e9'; (e.currentTarget as HTMLElement).style.background = '#eff9ff' }}
-                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = '#f3f4f6'; (e.currentTarget as HTMLElement).style.background = '#fff' }}>
-                <span style={{ fontSize:28 }}>{c.icon}</span>
-                <span style={{ fontSize:13, fontWeight:700, color:'#111' }}>{c.label}</span>
+                style={{ position:'relative', height:110, borderRadius:14, overflow:'hidden', cursor:'pointer', border:'none', padding:0, transition:'transform .2s, box-shadow .2s', boxShadow:'0 2px 8px rgba(0,0,0,0.08)' }}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform='scale(1.03)'; (e.currentTarget as HTMLElement).style.boxShadow='0 8px 24px rgba(0,0,0,0.15)' }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform='scale(1)'; (e.currentTarget as HTMLElement).style.boxShadow='0 2px 8px rgba(0,0,0,0.08)' }}>
+                {/* Background photo */}
+                <img src={c.img} alt={c.label} style={{ position:'absolute', inset:0, width:'100%', height:'100%', objectFit:'cover' }} />
+                {/* Gradient overlay */}
+                <div style={{ position:'absolute', inset:0, background:`linear-gradient(to top, ${c.color}ee 0%, ${c.color}88 50%, transparent 100%)` }} />
+                {/* Label */}
+                <div style={{ position:'absolute', bottom:0, left:0, right:0, padding:'10px 12px', textAlign:'left' }}>
+                  <div style={{ fontSize:15, fontWeight:800, color:'#fff', textShadow:'0 1px 4px rgba(0,0,0,0.5)' }}>{c.label}</div>
+                </div>
               </button>
             ))}
           </div>
