@@ -171,7 +171,7 @@ export async function POST(req: NextRequest) {
       // Update product sold count
       for (const item of items) {
         if (item.product_id) {
-          await supabaseAdmin.rpc('increment_sold', { product_id: item.product_id, qty: item.quantity || 1 }).catch(() => {})
+          try { await supabaseAdmin.rpc('increment_sold', { product_id: item.product_id, qty: item.quantity || 1 }) } catch {}
         }
       }
 
