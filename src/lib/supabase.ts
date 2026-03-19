@@ -4,10 +4,7 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
 
-// Cliente público (para el frontend)
 export const supabase = createClient(supabaseUrl, supabaseAnonKey)
-
-// Cliente admin (para APIs del servidor - tiene acceso total)
 export const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey)
 
 export type Product = {
@@ -23,7 +20,21 @@ export type Product = {
   source_name: string
   active: boolean
   sold: number
+  cj_id?: string
+  cj_variant_id?: string
+  updated_at?: string
   created_at: string
+}
+
+export type OrderItem = {
+  product_id: string
+  name: string
+  price: number
+  quantity: number
+  image: string
+  source_url?: string
+  cj_id?: string
+  cj_variant_id?: string
 }
 
 export type Order = {
@@ -56,25 +67,6 @@ export type Order = {
   notes?: string
   updated_at?: string
   created_at: string
-}
-
-export type OrderItem = {
-  product_id: string
-  name: string
-  price: number
-  quantity: number
-  image: string
-  source_url?: string
-  cj_id?: string
-  cj_variant_id?: string
-}
-
-export type OrderItem = {
-  product_id: string
-  name: string
-  price: number
-  quantity: number
-  image: string
 }
 
 export type StoreConfig = {

@@ -368,7 +368,7 @@ export default function TiendaPage() {
               style={{ width:'100%', padding:'11px 14px', background:'#f9fafb', border:'1px solid #e5e7eb', borderRadius:9, color:'#111', fontSize:14, outline:'none', boxSizing:'border-box', marginBottom:authError?8:14 }} />
             {authError && <div style={{ color:'#ef4444', fontSize:12, marginBottom:12, background:'#fef2f2', padding:'8px 12px', borderRadius:7, border:'1px solid #fecaca' }}>⚠️ {authError}</div>}
             <button onClick={handleAuth} disabled={authLoading}
-              style={{ width:'100%', padding:13, background:'linear-gradient(135deg,#0ea5e9,#7c3aed)', border:'none', borderRadius:9, color:'#fff', fontWeight:700, fontSize:15, cursor:'pointer', marginBottom:12, opacity:authLoading?.7:1 }}>
+              style={{ width:'100%', padding:13, background:'linear-gradient(135deg,#0ea5e9,#7c3aed)', border:'none', borderRadius:9, color:'#fff', fontWeight:700, fontSize:15, cursor:'pointer', marginBottom:12, opacity:authLoading ? 0.7 : 1 }}>
               {authLoading ? 'Cargando...' : authMode==='login' ? 'Entrar →' : 'Crear cuenta gratis →'}
             </button>
             <div style={{ textAlign:'center', fontSize:13, color:'#888' }}>
