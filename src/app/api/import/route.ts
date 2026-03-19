@@ -79,7 +79,8 @@ export async function POST(req: NextRequest) {
             .map((img: string) => img.replace('http://', 'https://')).slice(0, 8)
         : []
 
-      const { data: product, error } = await supabaseAdmin.from('products').insert([{
+      // Build insert data — handle missing cj_id column gracefully
+      const insertData: any = {
         name: cleanTitle,
         description,
         price: suggestedPrice,
@@ -90,7 +91,25 @@ export async function POST(req: NextRequest) {
         source_url,
         source_name,
         active: true,
-      }]).select().single()
+      }
+      // Add optional fields if they exist in the schema
+      const cjIdVal = String(body.productData?.cj_id || body.productData?.cj_pid || '')
+      if (cjIdVal) insertData.cj_id = cjIdVal
+
+      let product: any = null
+      let error: any = null
+      const res1 = await supabaseAdmin.from('products').insert([insertData]).select().single()
+      
+      if (res1.error?.message?.includes('cj_id')) {
+        // Column doesn't exist yet — retry without cj_id
+        delete insertData.cj_id
+        const res2 = await supabaseAdmin.from('products').insert([insertData]).select().single()
+        product = res2.data
+        error = res2.error
+      } else {
+        product = res1.data
+        error = res1.error
+      }
 
       if (error) throw new Error(error.message)
 

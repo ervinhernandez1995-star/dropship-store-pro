@@ -485,6 +485,15 @@ function AdminProducts({ products, onRefresh }: { products: Product[]; onRefresh
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
         <div>
           <h1 style={{ fontFamily: 'Syne, sans-serif', fontSize: 26, fontWeight: 800 }}>Productos ({products.length})</h1>
+          <button onClick={async () => {
+            if (!confirm('¿Traducir todos los productos en chino al español? Esto puede tardar varios minutos.')) return
+            const r = await fetch('/api/fix-products', { method: 'POST' })
+            const d = await r.json()
+            alert(`✅ Listo: ${d.fixed} productos traducidos de ${d.total} en chino.`)
+            onRefresh()
+          }} style={{ padding: '8px 16px', background: 'rgba(14,165,233,0.1)', border: '1px solid rgba(14,165,233,0.3)', borderRadius: 8, color: 'var(--accent)', cursor: 'pointer', fontSize: 12, fontWeight: 700, marginLeft: 12 }}>
+            🌐 Traducir productos en chino
+          </button>
           <p style={{ color: 'var(--text2)', fontSize: 14 }}>Gestiona tu catálogo de productos</p>
         </div>
         <button onClick={openNew} className="btn-primary" style={{ padding: '10px 22px', fontSize: 14 }}>+ Nuevo producto</button>
