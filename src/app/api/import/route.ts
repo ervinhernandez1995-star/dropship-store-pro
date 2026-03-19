@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
 
     // New format: browser already fetched the data, sends it here to save
     if (body.productData) {
-      const { title, price, stock, images, attrs, source_url, source_name, category_id } = body.productData
+      const { title, price, stock, images, attrs, source_url, source_name, category_id, cj_pid, ali_id } = body.productData
 
       if (!title || !price || price <= 0) {
         return NextResponse.json({ error: 'Datos incompletos del producto' }, { status: 400 })
@@ -74,4 +74,14 @@ export async function POST(req: NextRequest) {
     console.error('Import error:', e)
     return NextResponse.json({ error: e.message || 'Error al importar' }, { status: 500 })
   }
+}
+
+// CJ product import helper — called when source is cjdropshipping
+export async function GET(req: NextRequest) {
+  const { searchParams } = new URL(req.url)
+  const pid = searchParams.get('cj_pid')
+  if (!pid) return NextResponse.json({ error: 'pid requerido' }, { status: 400 })
+  
+  const detail = await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/cj-proxy?pid=${pid}`)
+  return detail
 }

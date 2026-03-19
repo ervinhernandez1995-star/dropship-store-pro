@@ -163,9 +163,10 @@ function AdminImporter({ onRefresh, onGoProducts }: { onRefresh: () => void; onG
 
     const isMercadoLibre = url.includes('mercadolibre')
     const isAliExpress = url.includes('aliexpress')
+    const isCJ = url.includes('cjdropshipping') || url.includes('cjdrop')
 
-    if (!isMercadoLibre && !isAliExpress) {
-      setError('Pega una URL de MercadoLibre o AliExpress')
+    if (!isMercadoLibre && !isAliExpress && !isCJ) {
+      setError('Pega una URL de MercadoLibre, AliExpress o CJDropshipping')
       setLoading(false)
       return
     }
@@ -834,51 +835,38 @@ function AdminBulkImporter({ onRefresh, onGoProducts }: { onRefresh: () => void;
         rawProducts = mlData.results || []
         sourceName = 'Amazon'
       } else if (isAliExpress) {
-        sourceName = 'AliExpress'
-        const searchUrl = url.startsWith('http') ? url : `https://www.aliexpress.com/wholesale?SearchText=${encodeURIComponent(url.trim())}`
-        setProgress(`🤖 Stagehand analizando AliExpress con IA...`)
+        // Use CJDropshipping API — free, reliable, no scraping, no captchas
+        const keyword = url.startsWith('http')
+          ? (url.match(/[?&](?:SearchText|q|keyword)=([^&]+)/i)?.[1] || '').replace(/\+/g, ' ')
+          : url.trim()
 
-        // Use Stagehand (Browserbase) for reliable scraping
-        const stageRes = await fetch('/api/stagehand-bulk', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ url: searchUrl, limit })
-        })
-        const stageData = await stageRes.json()
+        sourceName = 'CJDropshipping'
+        setProgress(`🔍 Buscando "${decodeURIComponent(keyword || 'productos')}" en CJDropshipping...`)
 
-        if (stageData.error) throw new Error(`Stagehand error: ${stageData.error}`)
+        const cjRes = await fetch(`/api/cj?action=search&q=${encodeURIComponent(keyword || 'productos')}&limit=${limit}`)
+        const cjData = await cjRes.json()
 
-        const stageProducts = stageData.products || []
-        setProgress(`✅ ${stageProducts.length} productos encontrados. Obteniendo detalles...`)
+        if (cjData.error) throw new Error('CJ API: ' + cjData.error)
 
-        for (let i = 0; i < stageProducts.length && rawProducts.length < limit; i++) {
-          const sp = stageProducts[i]
-          setProgress(`📦 Producto ${i+1}/${stageProducts.length}...`)
-          try {
-            // Get full details via RapidAPI for clean images
-            if (sp.id && sp.id.length >= 10) {
-              const detailRes = await fetch(`/api/ali-proxy?url=https://www.aliexpress.com/item/${sp.id}.html`)
-              const detail = await detailRes.json()
-              if (detail.raw?.title && detail.raw?.price > 0) {
-                rawProducts.push({
-                  title: detail.raw.title,
-                  price: detail.raw.price,
-                  available_quantity: 50,
-                  category_id: '',
-                  permalink: `https://www.aliexpress.com/item/${sp.id}.html`,
-                  thumbnail: detail.raw.images?.[0] || sp.image || '',
-                  images: detail.raw.images?.length > 0 ? detail.raw.images : [sp.image].filter(Boolean),
-                  source: 'aliexpress',
-                  ali_id: sp.id,
-                })
-              }
-            }
-          } catch { /* skip */ }
-          await new Promise(r => setTimeout(r, 300))
+        const cjProducts = cjData.products || []
+        setProgress(`✅ ${cjProducts.length} productos encontrados`)
+
+        for (const p of cjProducts.slice(0, limit)) {
+          rawProducts.push({
+            title: p.titleEs || p.title,
+            price: p.price,
+            available_quantity: p.stock || 50,
+            category_id: '',
+            permalink: p.source_url,
+            thumbnail: p.image || p.images?.[0] || '',
+            images: p.images || [p.image].filter(Boolean),
+            source: 'cjdropshipping',
+            cj_id: p.cj_id,
+          })
         }
 
         if (rawProducts.length === 0) {
-          throw new Error('Stagehand no encontró productos. Verifica la URL e intenta de nuevo.')
+          throw new Error('No se encontraron productos. Prueba con otro término de búsqueda como "auriculares bluetooth" o "smartwatch".')
         }
       } else {
         setError('URL no reconocida.'); setLoading(false); return

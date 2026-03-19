@@ -1,8 +1,8 @@
 {
-  "headers": [
-    {
-      "source": "/api/payment/webhook",
-      "headers": [{ "key": "x-vercel-skip-body-parsing", "value": "true" }]
-    }
-  ]
+  "functions": {
+    "src/app/api/cj/route.ts": { "maxDuration": 30 },
+    "src/app/api/stagehand-bulk/route.ts": { "maxDuration": 60 },
+    "src/app/api/stagehand-scrape/route.ts": { "maxDuration": 60 },
+    "src/app/api/import/route.ts": { "maxDuration": 30 }
+  }
 }

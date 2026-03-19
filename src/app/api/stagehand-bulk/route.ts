@@ -13,7 +13,7 @@ export async function OPTIONS() {
 // Use Browserbase REST API to run scraping without installing Playwright
 async function scrapeWithBrowserbase(url: string, bbApiKey: string, bbProjectId: string): Promise<string> {
   // Create session
-  const sessionRes = await fetch('https://www.browserbase.com/v1/sessions', {
+  const sessionRes = await fetch('https://api.browserbase.com/v1/sessions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-BB-API-Key': bbApiKey },
     body: JSON.stringify({ projectId: bbProjectId, browserSettings: { viewport: { width: 1280, height: 800 } } }),
@@ -26,7 +26,7 @@ async function scrapeWithBrowserbase(url: string, bbApiKey: string, bbProjectId:
   await new Promise(r => setTimeout(r, 2000))
 
   // Navigate to URL
-  const navRes = await fetch(`https://www.browserbase.com/v1/sessions/${session.id}/navigate`, {
+  const navRes = await fetch(`https://api.browserbase.com/v1/sessions/${session.id}/navigate`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-BB-API-Key': bbApiKey },
     body: JSON.stringify({ url }),
@@ -35,7 +35,7 @@ async function scrapeWithBrowserbase(url: string, bbApiKey: string, bbProjectId:
   await new Promise(r => setTimeout(r, 3000)) // wait for page load
 
   // Get page content
-  const contentRes = await fetch(`https://www.browserbase.com/v1/sessions/${session.id}/execute`, {
+  const contentRes = await fetch(`https://api.browserbase.com/v1/sessions/${session.id}/execute`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-BB-API-Key': bbApiKey },
     body: JSON.stringify({
@@ -66,7 +66,7 @@ async function scrapeWithBrowserbase(url: string, bbApiKey: string, bbProjectId:
   })
 
   // Stop session
-  await fetch(`https://www.browserbase.com/v1/sessions/${session.id}`, {
+  await fetch(`https://api.browserbase.com/v1/sessions/${session.id}`, {
     method: 'DELETE',
     headers: { 'X-BB-API-Key': bbApiKey },
   })

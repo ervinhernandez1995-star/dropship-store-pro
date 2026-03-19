@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
 
   try {
     // Create Browserbase session
-    const sessionRes = await fetch('https://www.browserbase.com/v1/sessions', {
+    const sessionRes = await fetch('https://api.browserbase.com/v1/sessions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-BB-API-Key': bbApiKey },
       body: JSON.stringify({ projectId: bbProjectId }),
@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
     if (!session.id) throw new Error('Session failed')
 
     // Navigate
-    await fetch(`https://www.browserbase.com/v1/sessions/${session.id}/navigate`, {
+    await fetch(`https://api.browserbase.com/v1/sessions/${session.id}/navigate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-BB-API-Key': bbApiKey },
       body: JSON.stringify({ url }),
@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
     await new Promise(r => setTimeout(r, 3000))
 
     // Extract product data
-    const execRes = await fetch(`https://www.browserbase.com/v1/sessions/${session.id}/execute`, {
+    const execRes = await fetch(`https://api.browserbase.com/v1/sessions/${session.id}/execute`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-BB-API-Key': bbApiKey },
       body: JSON.stringify({
@@ -80,7 +80,7 @@ export async function POST(req: NextRequest) {
     })
 
     // Stop session
-    await fetch(`https://www.browserbase.com/v1/sessions/${session.id}`, {
+    await fetch(`https://api.browserbase.com/v1/sessions/${session.id}`, {
       method: 'DELETE',
       headers: { 'X-BB-API-Key': bbApiKey },
     })
