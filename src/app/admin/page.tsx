@@ -1028,9 +1028,11 @@ function AdminBulkImporter({ onRefresh, onGoProducts }: { onRefresh: () => void;
         <div>
           <div style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: 14, padding: 20, marginBottom: 20 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-              <span style={{ fontSize: 32 }}>🎉</span>
+              <span style={{ fontSize: 32 }}>{result.inserted > 0 ? '🎉' : '⚠️'}</span>
               <div>
-                <div style={{ fontFamily: 'Syne, sans-serif', fontSize: 18, fontWeight: 800, color: 'var(--accent3)' }}>¡Importación completada!</div>
+                <div style={{ fontFamily: 'Syne, sans-serif', fontSize: 18, fontWeight: 800, color: result.inserted > 0 ? 'var(--accent3)' : '#f59e0b' }}>
+                  {result.inserted > 0 ? '¡Importación completada!' : 'Importación con problemas'}
+                </div>
                 <div style={{ fontSize: 13, color: 'var(--text2)' }}>Fuente: {result.source}</div>
               </div>
             </div>
@@ -1048,6 +1050,15 @@ function AdminBulkImporter({ onRefresh, onGoProducts }: { onRefresh: () => void;
                 </div>
               ))}
             </div>
+            {/* Show error details if any */}
+            {result.error_details?.length > 0 && (
+              <div style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 8, padding: 12, marginBottom: 14 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: '#ef4444', marginBottom: 6 }}>⚠️ Detalles de errores:</div>
+                {result.error_details.map((e: string, i: number) => (
+                  <div key={i} style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 3 }}>• {e}</div>
+                ))}
+              </div>
+            )}
             {result.inserted > 0 && (
               <div>
                 <div style={{ fontSize: 13, color: 'var(--text2)', marginBottom: 10, fontWeight: 600 }}>Vista previa de los primeros importados:</div>
@@ -1068,6 +1079,11 @@ function AdminBulkImporter({ onRefresh, onGoProducts }: { onRefresh: () => void;
                   <button onClick={onGoProducts} className="btn-primary" style={{ padding: '9px 20px', fontSize: 13 }}>Ver todos mis productos →</button>
                   <button onClick={() => { setResult(null); setUrl('') }} className="btn-ghost" style={{ padding: '9px 20px', fontSize: 13 }}>Importar otra categoría</button>
                 </div>
+              </div>
+            )}
+            {result.inserted === 0 && (
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button onClick={() => { setResult(null) }} className="btn-primary" style={{ padding: '9px 20px', fontSize: 13 }}>Intentar de nuevo</button>
               </div>
             )}
           </div>

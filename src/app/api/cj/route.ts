@@ -61,7 +61,7 @@ export async function GET(req: NextRequest) {
         id: p.pid,
         title: isChinese(p.productNameEn) ? (p.productName || p.productNameEn) : p.productNameEn,
         titleEs: isChinese(p.productName) ? p.productNameEn : (p.productName || p.productNameEn),
-        price: parseFloat(p.sellPrice || p.productPrice || '0'),
+        price: parseFloat(p.sellPrice || p.productPrice || p.salePrice || p.channelPrice || '0'),
         image: p.productImage || p.productImgUrl || '',
         images: [
           ...(p.productImageSet ? p.productImageSet.split(',').filter(Boolean) : []),
@@ -106,7 +106,7 @@ export async function GET(req: NextRequest) {
           id: p.pid,
           title: p.productNameEn,
           titleEs: p.productName || p.productNameEn,
-          price: parseFloat(p.sellPrice || p.productPrice || '0'),
+          price: parseFloat(p.sellPrice || p.productPrice || p.salePrice || p.channelPrice || '0'),
           images,
           description: p.description || '',
           category: p.categoryName || '',
