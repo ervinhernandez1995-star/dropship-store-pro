@@ -3,17 +3,12 @@ import { NextRequest, NextResponse } from 'next/server'
 const CJ_BASE = 'https://developers.cjdropshipping.com/api2.0/v1'
 const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type' }
 
-// ── Token cache (in-memory for serverless) ──────────────────────
 let tokenCache: { token: string; expires: number } | null = null
 
 async function getCJToken(): Promise<string> {
   const apiKey = process.env.CJ_API_KEY
   if (!apiKey) throw new Error('CJ_API_KEY no configurada')
-
-  // Return cached token if still valid (with 1hr buffer)
-  if (tokenCache && tokenCache.expires > Date.now() + 3600000) {
-    return tokenCache.token
-  }
+  if (tokenCache && tokenCache.expires > Date.now() + 3600000) return tokenCache.token
 
   const res = await fetch(`${CJ_BASE}/authentication/getAccessToken`, {
     method: 'POST',
@@ -21,13 +16,43 @@ async function getCJToken(): Promise<string> {
     body: JSON.stringify({ apiKey }),
   })
   const data = await res.json()
-  if (!data.result || !data.data?.accessToken) {
-    throw new Error('CJ auth failed: ' + (data.message || JSON.stringify(data)))
+  if (!data.result || !data.data?.accessToken) throw new Error('CJ auth failed: ' + (data.message || JSON.stringify(data)))
+  tokenCache = { token: data.data.accessToken, expires: new Date(data.data.accessTokenExpiryDate).getTime() }
+  return data.data.accessToken
+}
+
+function parseImages(p: any): string[] {
+  // CJ stores images in productImageSet as comma-separated URLs
+  // Also check variantList for additional images
+  const imgs: string[] = []
+  const seen = new Set<string>()
+
+  const add = (url: string) => {
+    if (!url || seen.has(url)) return
+    seen.add(url)
+    imgs.push(url.replace('http://', 'https://'))
   }
 
-  const expiryDate = new Date(data.data.accessTokenExpiryDate).getTime()
-  tokenCache = { token: data.data.accessToken, expires: expiryDate }
-  return data.data.accessToken
+  // Primary source: productImageSet
+  if (p.productImageSet) {
+    p.productImageSet.split(',').forEach((u: string) => add(u.trim()))
+  }
+  // Secondary: single image fields
+  if (p.productImage) add(p.productImage)
+  if (p.productImgUrl) add(p.productImgUrl)
+  // From variants
+  if (Array.isArray(p.variantList)) {
+    p.variantList.forEach((v: any) => { if (v.variantImage) add(v.variantImage) })
+  }
+  if (Array.isArray(p.variants)) {
+    p.variants.forEach((v: any) => { if (v.variantImage) add(v.variantImage) })
+  }
+
+  return imgs.slice(0, 8)
+}
+
+function isChinese(t: string): boolean {
+  return /[\u4e00-\u9fff]/.test(t || '')
 }
 
 export async function OPTIONS() {
@@ -41,55 +66,72 @@ export async function GET(req: NextRequest) {
   try {
     const token = await getCJToken()
 
-    // ── SEARCH PRODUCTS ──────────────────────────────────────────
+    // ── DEBUG: see raw CJ response ────────────────────────────────
+    if (action === 'debug') {
+      const q = searchParams.get('q') || 'smartwatch'
+      const raw = await fetch(`${CJ_BASE}/product/list?productNameEn=${encodeURIComponent(q)}&pageNum=1&pageSize=3`, {
+        headers: { 'CJ-Access-Token': token }
+      })
+      const data = await raw.json()
+      return NextResponse.json({ raw: data, firstProduct: data.data?.list?.[0] }, { headers: cors })
+    }
+
+    // ── SEARCH ────────────────────────────────────────────────────
     if (action === 'search') {
       const query = searchParams.get('q') || ''
-      const page = searchParams.get('page') || '1'
-      const limit = searchParams.get('limit') || '20'
+      const page = parseInt(searchParams.get('page') || '1')
+      const limit = parseInt(searchParams.get('limit') || '20')
 
-      const res = await fetch(
+      // Try multiple search strategies to get more products
+      let allProducts: any[] = []
+
+      // Strategy 1: search by English name
+      const res1 = await fetch(
         `${CJ_BASE}/product/list?productNameEn=${encodeURIComponent(query)}&pageNum=${page}&pageSize=${limit}`,
         { headers: { 'CJ-Access-Token': token } }
       )
-      const data = await res.json()
-      if (!data.result) throw new Error(data.message || 'CJ search failed')
+      const data1 = await res1.json()
+      if (data1.result && data1.data?.list) allProducts = [...allProducts, ...data1.data.list]
 
-      // Helper: detect Chinese text
-      const isChinese = (t: string) => /[\u4e00-\u9fff]/.test(t || '')
+      // Strategy 2: if not enough, also search without pagination filter
+      if (allProducts.length < limit && page === 1) {
+        const res2 = await fetch(
+          `${CJ_BASE}/product/list?productNameEn=${encodeURIComponent(query)}&pageNum=2&pageSize=${limit}`,
+          { headers: { 'CJ-Access-Token': token } }
+        )
+        const data2 = await res2.json()
+        if (data2.result && data2.data?.list) {
+          const existingIds = new Set(allProducts.map((p: any) => p.pid))
+          data2.data.list.forEach((p: any) => { if (!existingIds.has(p.pid)) allProducts.push(p) })
+        }
+      }
 
-      const products = (data.data?.list || []).map((p: any) => {
-        // Extract all available images from list result
-        const imageList = [
-          ...(p.productImageSet ? p.productImageSet.split(',').filter(Boolean) : []),
-          ...(p.productImage ? [p.productImage] : []),
-          ...(p.productImgUrl ? [p.productImgUrl] : []),
-        ]
-          .filter(Boolean)
-          .filter((img: string, i: number, arr: string[]) => arr.indexOf(img) === i)
-          .map((img: string) => img.replace('http://', 'https://'))
-          .slice(0, 8)
+      // Shuffle to get variety
+      for (let i = allProducts.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [allProducts[i], allProducts[j]] = [allProducts[j], allProducts[i]]
+      }
 
+      const products = allProducts.slice(0, limit).map((p: any) => {
+        const images = parseImages(p)
         return {
           id: p.pid,
-          title: isChinese(p.productNameEn) ? (p.productName || p.productNameEn) : p.productNameEn,
+          cj_id: p.pid,
+          title: isChinese(p.productNameEn) ? (p.productName || p.productNameEn) : (p.productNameEn || p.productName),
           titleEs: isChinese(p.productName) ? p.productNameEn : (p.productName || p.productNameEn),
           price: parseFloat(p.sellPrice || p.productPrice || p.salePrice || p.channelPrice || '0'),
-          image: imageList[0] || '',
-          images: imageList,
-          imageSet: p.productImageSet || '', // raw set for fallback
+          image: images[0] || '',
+          images,
           category: p.categoryName || '',
           stock: 999,
-          source: 'CJDropshipping',
           source_url: `https://cjdropshipping.com/product/-p-${p.pid}.html`,
-          cj_id: p.pid,
         }
       })
 
-
-      return NextResponse.json({ success: true, products, total: data.data?.total || products.length }, { headers: cors })
+      return NextResponse.json({ success: true, products, total: allProducts.length }, { headers: cors })
     }
 
-    // ── PRODUCT DETAIL ───────────────────────────────────────────
+    // ── DETAIL ────────────────────────────────────────────────────
     if (action === 'detail') {
       const pid = searchParams.get('pid')
       if (!pid) return NextResponse.json({ error: 'pid requerido' }, { status: 400, headers: cors })
@@ -98,34 +140,26 @@ export async function GET(req: NextRequest) {
         headers: { 'CJ-Access-Token': token }
       })
       const data = await res.json()
-      if (!data.result) throw new Error(data.message)
+      if (!data.result) throw new Error(data.message || 'Product not found')
 
       const p = data.data
-      const images = [
-        ...(p.productImageSet ? p.productImageSet.split(',').filter(Boolean) : []),
-        ...(p.productImage ? [p.productImage] : []),
-        ...(p.productImgUrl ? [p.productImgUrl] : []),
-      ]
-        .filter(Boolean)
-        .filter((img, idx, arr) => arr.indexOf(img) === idx) // deduplicate
-        .map((img: string) => img.replace('http://', 'https://'))
-        .slice(0, 8)
+      const images = parseImages(p)
 
       return NextResponse.json({
         success: true,
         product: {
           id: p.pid,
-          title: p.productNameEn,
+          cj_id: p.pid,
+          title: isChinese(p.productNameEn) ? (p.productName || p.productNameEn) : (p.productNameEn || p.productName),
           titleEs: p.productName || p.productNameEn,
           price: parseFloat(p.sellPrice || p.productPrice || p.salePrice || p.channelPrice || '0'),
           images,
-          imageSet: p.productImageSet || '',
           description: p.description || '',
           category: p.categoryName || '',
-          variants: p.variants || [],
-          source: 'CJDropshipping',
           source_url: `https://cjdropshipping.com/product/-p-${p.pid}.html`,
-          cj_id: p.pid,
+          // Return raw data for debugging
+          _raw_imageSet: p.productImageSet || '',
+          _raw_image: p.productImage || '',
         }
       }, { headers: cors })
     }
@@ -136,11 +170,9 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// ── CREATE ORDER ─────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
   const body = await req.json()
   const { action } = body
-
   try {
     const token = await getCJToken()
 
@@ -159,10 +191,7 @@ export async function POST(req: NextRequest) {
           shippingAddress: shippingAddress.address,
           shippingCustomerName: shippingAddress.name,
           shippingPhone: shippingAddress.phone,
-          products: products.map((p: any) => ({
-            vid: p.variant_id || p.cj_id,
-            quantity: p.quantity || 1,
-          }))
+          products: products.map((p: any) => ({ vid: p.variant_id || p.cj_id, quantity: p.quantity || 1 }))
         })
       })
       const data = await res.json()
@@ -171,10 +200,8 @@ export async function POST(req: NextRequest) {
 
     if (action === 'getShipping') {
       const { pid, quantity = 1 } = body
-      const res = await fetch(
-        `${CJ_BASE}/logistic/freightCalculate?startCountryCode=CN&endCountryCode=MX&pid=${pid}&quantity=${quantity}`,
-        { headers: { 'CJ-Access-Token': token } }
-      )
+      const res = await fetch(`${CJ_BASE}/logistic/freightCalculate?startCountryCode=CN&endCountryCode=MX&pid=${pid}&quantity=${quantity}`,
+        { headers: { 'CJ-Access-Token': token } })
       const data = await res.json()
       return NextResponse.json({ success: data.result, shipping: data.data }, { headers: cors })
     }

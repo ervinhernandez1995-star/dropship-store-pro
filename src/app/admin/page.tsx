@@ -925,14 +925,14 @@ function AdminBulkImporter({ onRefresh, onGoProducts }: { onRefresh: () => void;
   const [error, setError] = useState('')
 
   const examples = [
-    { label: '🔊 Bocinas bluetooth', url: 'bocinas bluetooth' },
-    { label: '🎧 Auriculares inalámbricos', url: 'auriculares inalambricos' },
-    { label: '⌚ Smartwatch', url: 'smartwatch hombre mujer' },
-    { label: '👟 Ropa deportiva', url: 'ropa deportiva' },
-    { label: '🍳 Cocina hogar', url: 'utensilios cocina' },
-    { label: '📱 Accesorios celular', url: 'accesorios iphone android' },
-    { label: '💡 Iluminación LED', url: 'lamparas led decoracion' },
-    { label: '🎮 Gaming', url: 'accesorios gaming' },
+    { label: '🔊 Bocinas bluetooth', url: 'bluetooth speaker' },
+    { label: '🎧 Auriculares TWS', url: 'tws earbuds wireless' },
+    { label: '⌚ Smartwatch', url: 'smart watch fitness' },
+    { label: '👟 Ropa deportiva', url: 'sport clothing gym' },
+    { label: '🍳 Cocina hogar', url: 'kitchen gadgets home' },
+    { label: '📱 Accesorios celular', url: 'phone case accessories' },
+    { label: '💡 Iluminación LED', url: 'led light strip lamp' },
+    { label: '🎮 Gaming', url: 'gaming accessories mouse' },
   ]
 
   const extractKeywords = (u: string): string => {
@@ -1000,22 +1000,14 @@ function AdminBulkImporter({ onRefresh, onGoProducts }: { onRefresh: () => void;
         setProgress(`🔍 Buscando "${decodeURIComponent(keyword || 'productos')}" en CJDropshipping...`)
 
         // Use random page to get different products each time
-        const randomPage = Math.floor(Math.random() * 5) + 1
-        setProgress(`🔍 Buscando "${decodeURIComponent(keyword || 'productos')}" — página ${randomPage}...`)
+        setProgress(`🔍 Buscando "${decodeURIComponent(keyword || 'productos')}" en CJDropshipping...`)
         
-        const cjRes = await fetch(`/api/cj?action=search&q=${encodeURIComponent(keyword || 'productos')}&limit=${limit}&page=${randomPage}`)
+        const cjRes = await fetch(`/api/cj?action=search&q=${encodeURIComponent(keyword || 'productos')}&limit=${limit}&page=1`)
         const cjData = await cjRes.json()
 
         if (cjData.error) throw new Error('CJ API: ' + cjData.error)
 
         let cjProducts = cjData.products || []
-        
-        // If page returned nothing, try page 1
-        if (cjProducts.length === 0 && randomPage > 1) {
-          const fallbackRes = await fetch(`/api/cj?action=search&q=${encodeURIComponent(keyword || 'productos')}&limit=${limit}&page=1`)
-          const fallbackData = await fallbackRes.json()
-          cjProducts = fallbackData.products || []
-        }
 
         setProgress(`✅ ${cjProducts.length} productos encontrados. Obteniendo fotos...`)
 
@@ -1025,20 +1017,17 @@ function AdminBulkImporter({ onRefresh, onGoProducts }: { onRefresh: () => void;
           // Start with images from the list result
           let allImages: string[] = (p.images || []).filter(Boolean)
           
-          // Always fetch detail to get full productImageSet (list only has 1 image)
+          // Fetch detail to get ALL images from productImageSet
           try {
             const detailRes = await fetch(`/api/cj?action=detail&pid=${p.cj_id}`)
             const detail = await detailRes.json()
-            
-            if (detail.product?.images?.length > 0) {
+            if (detail.product?.images?.length > 1) {
               allImages = detail.product.images
-            } else if (detail.product?.imageSet) {
-              // Try alternate field name
-              allImages = String(detail.product.imageSet).split(',').filter(Boolean).map((img: string) => img.replace('http://', 'https://'))
+            } else if (detail.product?._raw_imageSet) {
+              allImages = detail.product._raw_imageSet.split(',').filter(Boolean).map((img: string) => img.trim().replace('http://', 'https://'))
             }
           } catch { /* keep list images */ }
-
-          // Ensure at least 1 image
+          
           if (allImages.length === 0 && p.image) allImages = [p.image]
 
           rawProducts.push({
