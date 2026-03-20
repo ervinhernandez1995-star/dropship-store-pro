@@ -22,31 +22,32 @@ async function getCJToken(): Promise<string> {
 }
 
 function parseImages(p: any): string[] {
-  // CJ stores images in productImageSet as comma-separated URLs
-  // Also check variantList for additional images
   const imgs: string[] = []
   const seen = new Set<string>()
 
   const add = (url: string) => {
-    if (!url || seen.has(url)) return
-    seen.add(url)
-    imgs.push(url.replace('http://', 'https://'))
+    const clean = url.trim().replace('http://', 'https://')
+    if (!clean || seen.has(clean) || !clean.startsWith('https://')) return
+    seen.add(clean)
+    imgs.push(clean)
   }
 
-  // Primary source: productImageSet
-  if (p.productImageSet) {
-    p.productImageSet.split(',').forEach((u: string) => add(u.trim()))
-  }
-  // Secondary: single image fields
+  // 1. productImageSet (comma-separated) — main source for detail endpoint
+  if (p.productImageSet) p.productImageSet.split(',').forEach((u: string) => add(u.trim()))
+
+  // 2. Single image fields
   if (p.productImage) add(p.productImage)
   if (p.productImgUrl) add(p.productImgUrl)
-  // From variants
-  if (Array.isArray(p.variantList)) {
-    p.variantList.forEach((v: any) => { if (v.variantImage) add(v.variantImage) })
+
+  // 3. Extract images from remark HTML — this is where CJ hides extra product photos!
+  // remark contains: <img src="https://oss-cf.cjdropshipping.com/..." />
+  if (p.remark) {
+    const remarkImgs = [...p.remark.matchAll(/src=["'](https?:\/\/[^"']+\.(?:jpg|jpeg|png|webp))[^"']*/gi)]
+    remarkImgs.forEach((m: any) => add(m[1]))
   }
-  if (Array.isArray(p.variants)) {
-    p.variants.forEach((v: any) => { if (v.variantImage) add(v.variantImage) })
-  }
+
+  // 4. Variant images
+  ;(p.variantList || p.variants || []).forEach((v: any) => { if (v.variantImage) add(v.variantImage) })
 
   return imgs.slice(0, 8)
 }
@@ -79,34 +80,56 @@ export async function GET(req: NextRequest) {
     // ── SEARCH ────────────────────────────────────────────────────
     if (action === 'search') {
       const query = searchParams.get('q') || ''
-      const page = parseInt(searchParams.get('page') || '1')
       const limit = parseInt(searchParams.get('limit') || '20')
 
-      // Try multiple search strategies to get more products
-      let allProducts: any[] = []
-
-      // Strategy 1: search by English name
-      const res1 = await fetch(
-        `${CJ_BASE}/product/list?productNameEn=${encodeURIComponent(query)}&pageNum=${page}&pageSize=${limit}`,
-        { headers: { 'CJ-Access-Token': token } }
-      )
-      const data1 = await res1.json()
-      if (data1.result && data1.data?.list) allProducts = [...allProducts, ...data1.data.list]
-
-      // Strategy 2: if not enough, also search without pagination filter
-      if (allProducts.length < limit && page === 1) {
-        const res2 = await fetch(
-          `${CJ_BASE}/product/list?productNameEn=${encodeURIComponent(query)}&pageNum=2&pageSize=${limit}`,
-          { headers: { 'CJ-Access-Token': token } }
-        )
-        const data2 = await res2.json()
-        if (data2.result && data2.data?.list) {
-          const existingIds = new Set(allProducts.map((p: any) => p.pid))
-          data2.data.list.forEach((p: any) => { if (!existingIds.has(p.pid)) allProducts.push(p) })
-        }
+      // CJ needs English keywords — expand query into related terms
+      const keywordMap: Record<string, string[]> = {
+        'smart watch': ['smart watch', 'smartwatch', 'fitness watch', 'sport watch'],
+        'smartwatch': ['smartwatch', 'smart watch', 'fitness watch', 'sport watch'],
+        'bluetooth speaker': ['bluetooth speaker', 'wireless speaker', 'portable speaker'],
+        'tws earbuds': ['tws earbuds', 'wireless earbuds', 'bluetooth earphones', 'earphones'],
+        'phone case': ['phone case', 'mobile phone case', 'iphone case'],
+        'led light': ['led light', 'led strip', 'led lamp'],
+        'gaming': ['gaming mouse', 'gaming keyboard', 'gaming accessories'],
+        'kitchen': ['kitchen gadgets', 'kitchen tools', 'kitchen accessories'],
+        'sport clothing': ['sport clothing', 'gym wear', 'sportswear'],
       }
 
-      // Shuffle to get variety
+      const queryLower = query.toLowerCase()
+      let keywords: string[] = []
+      for (const [key, vals] of Object.entries(keywordMap)) {
+        if (queryLower.includes(key) || key.includes(queryLower)) {
+          keywords = vals
+          break
+        }
+      }
+      if (keywords.length === 0) keywords = [query]
+
+      // Fetch from multiple keywords and combine
+      const allProducts: any[] = []
+      const seenPids = new Set<string>()
+
+      for (const kw of keywords) {
+        if (allProducts.length >= limit * 2) break
+        try {
+          const r = await fetch(
+            `${CJ_BASE}/product/list?productNameEn=${encodeURIComponent(kw)}&pageNum=1&pageSize=${limit}`,
+            { headers: { 'CJ-Access-Token': token } }
+          )
+          const d = await r.json()
+          if (d.result && d.data?.list) {
+            d.data.list.forEach((p: any) => {
+              if (!seenPids.has(p.pid)) {
+                seenPids.add(p.pid)
+                allProducts.push(p)
+              }
+            })
+          }
+        } catch { /* skip failed keyword */ }
+        await new Promise(r => setTimeout(r, 100))
+      }
+
+      // Shuffle for variety
       for (let i = allProducts.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
         [allProducts[i], allProducts[j]] = [allProducts[j], allProducts[i]]
@@ -128,7 +151,7 @@ export async function GET(req: NextRequest) {
         }
       })
 
-      return NextResponse.json({ success: true, products, total: allProducts.length }, { headers: cors })
+      return NextResponse.json({ success: true, products, total: products.length }, { headers: cors })
     }
 
     // ── DETAIL ────────────────────────────────────────────────────
