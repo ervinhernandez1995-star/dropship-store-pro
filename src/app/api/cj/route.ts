@@ -52,28 +52,39 @@ export async function GET(req: NextRequest) {
         { headers: { 'CJ-Access-Token': token } }
       )
       const data = await res.json()
-      if (!data.result) throw new Error(data.message)
+      if (!data.result) throw new Error(data.message || 'CJ search failed')
 
       // Helper: detect Chinese text
-      const isChinese = (t: string) => /[一-鿿]/.test(t || '')
+      const isChinese = (t: string) => /[\u4e00-\u9fff]/.test(t || '')
 
-      const products = (data.data?.list || []).map((p: any) => ({
-        id: p.pid,
-        title: isChinese(p.productNameEn) ? (p.productName || p.productNameEn) : p.productNameEn,
-        titleEs: isChinese(p.productName) ? p.productNameEn : (p.productName || p.productNameEn),
-        price: parseFloat(p.sellPrice || p.productPrice || p.salePrice || p.channelPrice || '0'),
-        image: p.productImage || p.productImgUrl || '',
-        images: [
+      const products = (data.data?.list || []).map((p: any) => {
+        // Extract all available images from list result
+        const imageList = [
           ...(p.productImageSet ? p.productImageSet.split(',').filter(Boolean) : []),
           ...(p.productImage ? [p.productImage] : []),
-        ].filter(Boolean).filter((img: string, i: number, arr: string[]) => arr.indexOf(img) === i).map((img: string) => img.replace('http://', 'https://')).slice(0, 8),
-        category: p.categoryName || '',
-        stock: p.productWeight ? 999 : 50,
-        source: 'CJDropshipping',
-        source_url: `https://cjdropshipping.com/product/-p-${p.pid}.html`,
-        cj_id: p.pid,
-        variants: p.variants || [],
-      }))
+          ...(p.productImgUrl ? [p.productImgUrl] : []),
+        ]
+          .filter(Boolean)
+          .filter((img: string, i: number, arr: string[]) => arr.indexOf(img) === i)
+          .map((img: string) => img.replace('http://', 'https://'))
+          .slice(0, 8)
+
+        return {
+          id: p.pid,
+          title: isChinese(p.productNameEn) ? (p.productName || p.productNameEn) : p.productNameEn,
+          titleEs: isChinese(p.productName) ? p.productNameEn : (p.productName || p.productNameEn),
+          price: parseFloat(p.sellPrice || p.productPrice || p.salePrice || p.channelPrice || '0'),
+          image: imageList[0] || '',
+          images: imageList,
+          imageSet: p.productImageSet || '', // raw set for fallback
+          category: p.categoryName || '',
+          stock: 999,
+          source: 'CJDropshipping',
+          source_url: `https://cjdropshipping.com/product/-p-${p.pid}.html`,
+          cj_id: p.pid,
+        }
+      })
+
 
       return NextResponse.json({ success: true, products, total: data.data?.total || products.length }, { headers: cors })
     }
@@ -108,6 +119,7 @@ export async function GET(req: NextRequest) {
           titleEs: p.productName || p.productNameEn,
           price: parseFloat(p.sellPrice || p.productPrice || p.salePrice || p.channelPrice || '0'),
           images,
+          imageSet: p.productImageSet || '',
           description: p.description || '',
           category: p.categoryName || '',
           variants: p.variants || [],

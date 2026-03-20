@@ -999,25 +999,47 @@ function AdminBulkImporter({ onRefresh, onGoProducts }: { onRefresh: () => void;
         sourceName = 'CJDropshipping'
         setProgress(`🔍 Buscando "${decodeURIComponent(keyword || 'productos')}" en CJDropshipping...`)
 
-        const cjRes = await fetch(`/api/cj?action=search&q=${encodeURIComponent(keyword || 'productos')}&limit=${limit}`)
+        // Use random page to get different products each time
+        const randomPage = Math.floor(Math.random() * 5) + 1
+        setProgress(`🔍 Buscando "${decodeURIComponent(keyword || 'productos')}" — página ${randomPage}...`)
+        
+        const cjRes = await fetch(`/api/cj?action=search&q=${encodeURIComponent(keyword || 'productos')}&limit=${limit}&page=${randomPage}`)
         const cjData = await cjRes.json()
 
         if (cjData.error) throw new Error('CJ API: ' + cjData.error)
 
-        const cjProducts = cjData.products || []
+        let cjProducts = cjData.products || []
+        
+        // If page returned nothing, try page 1
+        if (cjProducts.length === 0 && randomPage > 1) {
+          const fallbackRes = await fetch(`/api/cj?action=search&q=${encodeURIComponent(keyword || 'productos')}&limit=${limit}&page=1`)
+          const fallbackData = await fallbackRes.json()
+          cjProducts = fallbackData.products || []
+        }
+
         setProgress(`✅ ${cjProducts.length} productos encontrados. Obteniendo fotos...`)
 
         for (const p of cjProducts.slice(0, limit)) {
-          // Fetch full product detail to get ALL images (productImageSet)
-          let allImages = p.images || [p.image].filter(Boolean)
+          setProgress(`📸 Producto ${rawProducts.length + 1}/${Math.min(cjProducts.length, limit)} — obteniendo imágenes...`)
+          
+          // Start with images from the list result
+          let allImages: string[] = (p.images || []).filter(Boolean)
+          
+          // Always fetch detail to get full productImageSet (list only has 1 image)
           try {
-            setProgress(`📸 Obteniendo fotos de ${rawProducts.length + 1}/${Math.min(cjProducts.length, limit)}...`)
             const detailRes = await fetch(`/api/cj?action=detail&pid=${p.cj_id}`)
             const detail = await detailRes.json()
+            
             if (detail.product?.images?.length > 0) {
               allImages = detail.product.images
+            } else if (detail.product?.imageSet) {
+              // Try alternate field name
+              allImages = String(detail.product.imageSet).split(',').filter(Boolean).map((img: string) => img.replace('http://', 'https://'))
             }
-          } catch { /* use list image as fallback */ }
+          } catch { /* keep list images */ }
+
+          // Ensure at least 1 image
+          if (allImages.length === 0 && p.image) allImages = [p.image]
 
           rawProducts.push({
             title: p.titleEs || p.title,
@@ -1030,7 +1052,7 @@ function AdminBulkImporter({ onRefresh, onGoProducts }: { onRefresh: () => void;
             source: 'cjdropshipping',
             cj_id: p.cj_id,
           })
-          await new Promise(r => setTimeout(r, 200))
+          await new Promise(r => setTimeout(r, 300))
         }
 
         if (rawProducts.length === 0) {
